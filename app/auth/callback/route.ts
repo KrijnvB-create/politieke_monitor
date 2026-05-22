@@ -8,6 +8,12 @@ export async function GET(request: NextRequest) {
 
   let response = NextResponse.redirect(new URL(next, requestUrl.origin));
 
+  type CookieToSet = {
+    name: string;
+    value: string;
+    options?: Parameters<typeof response.cookies.set>[2];
+  };
+
   if (code) {
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,7 +23,7 @@ export async function GET(request: NextRequest) {
           getAll() {
             return request.cookies.getAll();
           },
-          setAll(cookiesToSet) {
+          setAll(cookiesToSet: CookieToSet[]) {
             cookiesToSet.forEach(({ name, value, options }) => {
               response.cookies.set(name, value, options);
             });
