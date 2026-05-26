@@ -1,0 +1,3017 @@
+diff --git a/app/fracties/page.tsx b/app/fracties/page.tsx
+--- a/app/fracties/page.tsx
++++ b/app/fracties/page.tsx
+@@ -1,58 +1,62 @@
+-import Link from "next/link";
+-import { Landmark } from "lucide-react";
+-import { ApiStatusPill } from "@/components/api-status-pill";
+-import { FactionSeatChart } from "@/components/faction-seat-chart";
+-import { SaveButton } from "@/components/save-button";
+-import { factionColor } from "@/lib/factions";
+-import { getFactionsOverview } from "@/lib/tk";
+-
+-export default async function FractiesPage() {
+-  const factions = await getFactionsOverview();
+-  const totalSeats = factions.items.reduce((sum, faction) => sum + (faction.AantalZetels ?? 0), 0);
+-
+-  return (
+-    <main className="page-shell">
+-      <section className="section-heading dashboard-heading">
+-        <div>
+-          <p className="eyebrow">Fracties</p>
+-          <h1>Zetelverdeling en partijoverzicht.</h1>
+-        </div>
+-        <div className="quiet-panel source-panel">
+-          <Landmark size={22} aria-hidden="true" />
+-          <div>
+-            <strong>{totalSeats} zetels</strong>
+-            <ApiStatusPill apiOk={factions.apiOk} />
+-          </div>
+-        </div>
+-      </section>
+-
+-      <section className="fracties-layout">
+-        <FactionSeatChart factions={factions.items} />
+-
+-        <div className="faction-grid">
+-          {factions.items.map((faction) => {
+-            const label = faction.Afkorting ?? faction.NaamNL ?? "Fractie";
+-            const id = faction.Id ?? label;
+-
+-            return (
+-              <article className="faction-card" key={id} style={{ borderTopColor: factionColor(label) }}>
+-                <div className="faction-swatch" style={{ backgroundColor: factionColor(label) }} aria-hidden="true" />
+-                <div>
+-                  <p className="eyebrow">{faction.AantalZetels ?? 0} zetels</p>
+-                  <h2>{label}</h2>
+-                  {faction.NaamNL && faction.NaamNL !== label ? <p>{faction.NaamNL}</p> : null}
+-                </div>
+-                <div className="result-actions">
+-                  <Link className="secondary-button inline-flex" href={`/fracties/${encodeURIComponent(id)}`}>
+-                    Open fractie
+-                  </Link>
+-                  <SaveButton kind="fractie" refId={id} label={label} meta={{ ...faction }} />
+-                </div>
+-              </article>
+-            );
+-          })}
+-        </div>
+-      </section>
+-    </main>
+-  );
+-}
++import Link from "next/link";
++import { Landmark } from "lucide-react";
++import { ApiStatusPill } from "@/components/api-status-pill";
++import { FactionSeatChart } from "@/components/faction-seat-chart";
++import { SaveButton } from "@/components/save-button";
++import { factionColor } from "@/lib/factions";
++import { getFactionsOverview } from "@/lib/tk";
++
++export default async function FractiesPage() {
++  const factions = await getFactionsOverview();
++  const totalSeats = factions.items.reduce((sum, faction) => sum + (faction.AantalZetels ?? 0), 0);
++
++  return (
++    <main className="page-shell">
++      <section className="section-heading dashboard-heading">
++        <div>
++          <p className="eyebrow">Fracties</p>
++          <h1>Zetelverdeling en partijoverzicht.</h1>
++        </div>
++        <div className="quiet-panel source-panel">
++          <Landmark size={22} aria-hidden="true" />
++          <div>
++            <strong>{totalSeats} zetels</strong>
++            <ApiStatusPill apiOk={factions.apiOk} />
++          </div>
++        </div>
++      </section>
++
++      <section className="fracties-layout">
++        <FactionSeatChart factions={factions.items} />
++
++        <div className="faction-grid">
++          {factions.items.map((faction) => {
++            const label = faction.Afkorting ?? faction.NaamNL ?? "Fractie";
++            const id = faction.Id ?? label;
++
++            return (
++              <article className="faction-card" key={id} style={{ borderTopColor: factionColor(label) }}>
++                <div className="faction-swatch" style={{ backgroundColor: factionColor(label) }} aria-hidden="true" />
++                <div>
++                  <p className="eyebrow">{faction.AantalZetels ?? 0} zetels</p>
++                  <h2>
++                    <Link className="result-title-link" href={`/fracties/${encodeURIComponent(id)}`}>
++                      {label}
++                    </Link>
++                  </h2>
++                  {faction.NaamNL && faction.NaamNL !== label ? <p>{faction.NaamNL}</p> : null}
++                </div>
++                <div className="result-actions">
++                  <Link className="secondary-button inline-flex" href={`/fracties/${encodeURIComponent(id)}`}>
++                    Open fractie
++                  </Link>
++                  <SaveButton kind="fractie" refId={id} label={label} meta={{ ...faction }} />
++                </div>
++              </article>
++            );
++          })}
++        </div>
++      </section>
++    </main>
++  );
++}
+diff --git a/app/globals.css b/app/globals.css
+--- a/app/globals.css
++++ b/app/globals.css
+@@ -1,1159 +1,1172 @@
+-:root {
+-  --paper: #f5f1e8;
+-  --surface: #fffdf8;
+-  --ink: #171615;
+-  --muted: #655f56;
+-  --line: #d7cfc0;
+-  --navy: #17324d;
+-  --red: #a33b2f;
+-  --green: #2f6f5e;
+-  --gold: #b0832f;
+-  --shadow: 0 16px 40px rgba(31, 29, 26, 0.08);
+-}
+-
+-* {
+-  box-sizing: border-box;
+-}
+-
+-html {
+-  background: var(--paper);
+-  color: var(--ink);
+-}
+-
+-body {
+-  min-height: 100vh;
+-  margin: 0;
+-  font-family:
+-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+-    sans-serif;
+-  letter-spacing: 0;
+-}
+-
+-a {
+-  color: inherit;
+-  text-decoration: none;
+-}
+-
+-button,
+-input {
+-  font: inherit;
+-}
+-
+-input {
+-  min-width: 0;
+-}
+-
+-.site-header {
+-  position: sticky;
+-  top: 0;
+-  z-index: 20;
+-  display: flex;
+-  align-items: center;
+-  justify-content: space-between;
+-  gap: 24px;
+-  padding: 14px clamp(18px, 4vw, 48px);
+-  background: rgba(245, 241, 232, 0.92);
+-  border-bottom: 1px solid var(--line);
+-  backdrop-filter: blur(14px);
+-}
+-
+-.brand {
+-  display: inline-flex;
+-  align-items: center;
+-  gap: 10px;
+-  color: var(--navy);
+-  font-weight: 800;
+-}
+-
+-.brand span {
+-  display: grid;
+-  line-height: 1.05;
+-}
+-
+-.brand small {
+-  margin-top: 2px;
+-  color: var(--muted);
+-  font-size: 11px;
+-  font-weight: 600;
+-  text-transform: uppercase;
+-}
+-
+-.main-nav {
+-  display: flex;
+-  align-items: center;
+-  flex-wrap: wrap;
+-  justify-content: flex-end;
+-  gap: 8px;
+-}
+-
+-.main-nav a,
+-.icon-button {
+-  display: inline-flex;
+-  min-height: 38px;
+-  align-items: center;
+-  gap: 7px;
+-  padding: 8px 10px;
+-  border: 1px solid transparent;
+-  background: transparent;
+-  color: var(--muted);
+-  cursor: pointer;
+-  font-size: 14px;
+-  font-weight: 700;
+-}
+-
+-.main-nav a:hover,
+-.icon-button:hover {
+-  color: var(--ink);
+-  border-color: var(--line);
+-}
+-
+-.nav-cta {
+-  background: var(--navy) !important;
+-  color: white !important;
+-}
+-
+-.dashboard,
+-.page-shell,
+-.auth-page {
+-  width: min(1180px, calc(100% - 36px));
+-  margin: 0 auto;
+-}
+-
+-.dashboard {
+-  padding: 28px 0 54px;
+-}
+-
+-.status-band {
+-  display: grid;
+-  grid-template-columns: minmax(0, 1fr) minmax(310px, 460px);
+-  gap: 24px;
+-  align-items: end;
+-  padding: 34px 0 28px;
+-  border-bottom: 1px solid var(--line);
+-}
+-
+-.eyebrow {
+-  margin: 0 0 8px;
+-  color: var(--red);
+-  font-size: 12px;
+-  font-weight: 900;
+-  text-transform: uppercase;
+-}
+-
+-h1,
+-h2,
+-h3,
+-p {
+-  margin-top: 0;
+-}
+-
+-h1 {
+-  max-width: 760px;
+-  margin-bottom: 12px;
+-  font-size: clamp(34px, 6vw, 70px);
+-  line-height: 0.98;
+-}
+-
+-h2 {
+-  margin-bottom: 8px;
+-  font-size: 24px;
+-  line-height: 1.15;
+-}
+-
+-h3 {
+-  margin-bottom: 7px;
+-  font-size: 17px;
+-  line-height: 1.3;
+-}
+-
+-p {
+-  color: var(--muted);
+-  line-height: 1.6;
+-}
+-
+-.status-band p {
+-  max-width: 620px;
+-  margin-bottom: 0;
+-  font-size: 18px;
+-}
+-
+-.status-metrics {
+-  display: grid;
+-  grid-template-columns: 1fr 1fr;
+-  gap: 10px;
+-}
+-
+-.status-metrics div,
+-.status-metrics a {
+-  display: grid;
+-  min-height: 92px;
+-  align-content: space-between;
+-  gap: 8px;
+-  padding: 14px;
+-  border: 1px solid var(--line);
+-  border-radius: 8px;
+-  background: var(--surface);
+-}
+-
+-.status-metrics a {
+-  grid-column: 1 / -1;
+-  min-height: 54px;
+-  grid-template-columns: auto 1fr;
+-  align-items: center;
+-  align-content: center;
+-  color: var(--navy);
+-  font-weight: 800;
+-}
+-
+-.status-metrics span {
+-  color: var(--muted);
+-  font-size: 12px;
+-  font-weight: 800;
+-  text-transform: uppercase;
+-}
+-
+-.status-metrics strong {
+-  font-size: 18px;
+-}
+-
+-.content-grid {
+-  display: grid;
+-  grid-template-columns: minmax(0, 1fr) 340px;
+-  gap: 28px;
+-  padding-top: 28px;
+-}
+-
+-.section-heading {
+-  margin-bottom: 18px;
+-}
+-
+-.search-heading,
+-.dashboard-heading {
+-  display: grid;
+-  grid-template-columns: minmax(0, 1fr) minmax(320px, 500px);
+-  gap: 20px;
+-  align-items: end;
+-  padding-bottom: 22px;
+-  border-bottom: 1px solid var(--line);
+-}
+-
+-.search-heading h1,
+-.dashboard-heading h1 {
+-  margin-bottom: 0;
+-  font-size: clamp(34px, 5vw, 58px);
+-}
+-
+-.section-heading.compact {
+-  display: flex;
+-  align-items: center;
+-  justify-content: space-between;
+-  gap: 16px;
+-  margin-bottom: 14px;
+-}
+-
+-.section-heading.compact h2,
+-.section-heading.compact p {
+-  margin-bottom: 0;
+-}
+-
+-.activity-list,
+-.dossier-list,
+-.saved-list,
+-.result-list,
+-.watch-list {
+-  display: grid;
+-  gap: 12px;
+-}
+-
+-.activity-card,
+-.dossier-card,
+-.saved-row,
+-.result-card,
+-.watch-panel,
+-.profile-card,
+-.quiet-panel,
+-.empty-state,
+-.warning-panel,
+-.auth-panel {
+-  border: 1px solid var(--line);
+-  border-radius: 8px;
+-  background: var(--surface);
+-  box-shadow: var(--shadow);
+-}
+-
+-.activity-card {
+-  display: grid;
+-  grid-template-columns: 42px minmax(0, 1fr) auto;
+-  gap: 14px;
+-  align-items: start;
+-  padding: 16px;
+-}
+-
+-.activity-icon {
+-  display: grid;
+-  width: 42px;
+-  height: 42px;
+-  place-items: center;
+-  border-radius: 8px;
+-  background: #e9efe9;
+-  color: var(--green);
+-}
+-
+-.activity-body p,
+-.dossier-card p {
+-  margin-bottom: 0;
+-}
+-
+-.activity-meta {
+-  display: flex;
+-  flex-wrap: wrap;
+-  gap: 8px;
+-  margin-bottom: 6px;
+-  color: var(--muted);
+-  font-size: 12px;
+-  font-weight: 800;
+-  text-transform: uppercase;
+-}
+-
+-.dossier-card {
+-  display: grid;
+-  gap: 14px;
+-  padding: 16px;
+-}
+-
+-.search-form {
+-  display: grid;
+-  grid-template-columns: auto minmax(0, 1fr) auto;
+-  gap: 10px;
+-  align-items: center;
+-  padding: 10px;
+-  border: 1px solid var(--line);
+-  border-radius: 8px;
+-  background: var(--surface);
+-  box-shadow: var(--shadow);
+-}
+-
+-.search-form input {
+-  width: 100%;
+-  min-height: 42px;
+-  border: 0;
+-  outline: 0;
+-  background: transparent;
+-  color: var(--ink);
+-}
+-
+-.result-count {
+-  display: inline-flex;
+-  align-items: center;
+-  gap: 8px;
+-  margin: 18px 0 22px;
+-  padding: 8px 12px;
+-  border: 1px solid var(--line);
+-  border-radius: 8px;
+-  background: #eef3ef;
+-  color: var(--green);
+-  font-weight: 800;
+-}
+-
+-.result-count span {
+-  color: var(--muted);
+-  font-size: 14px;
+-}
+-
+-.search-results {
+-  display: grid;
+-  gap: 28px;
+-}
+-
+-.result-section {
+-  padding-bottom: 8px;
+-}
+-
+-.result-card {
+-  display: grid;
+-  grid-template-columns: minmax(0, 1fr) auto;
+-  gap: 16px;
+-  align-items: start;
+-  padding: 16px;
+-}
+-
+-.result-card.compact {
+-  box-shadow: none;
+-}
+-
+-.result-main {
+-  min-width: 0;
+-}
+-
+-.result-actions {
+-  display: flex;
+-  flex-wrap: wrap;
+-  gap: 8px;
+-  align-items: center;
+-  justify-content: flex-end;
+-}
+-
+-.result-card h3 {
+-  margin-bottom: 6px;
+-}
+-
+-.result-card p {
+-  margin-bottom: 0;
+-}
+-
+-.result-meta {
+-  display: flex;
+-  flex-wrap: wrap;
+-  gap: 8px;
+-  margin-bottom: 8px;
+-  color: var(--muted);
+-  font-size: 12px;
+-  font-weight: 850;
+-  text-transform: uppercase;
+-}
+-
+-.result-meta span {
+-  display: inline-flex;
+-  align-items: center;
+-  gap: 4px;
+-}
+-
+-.match-label {
+-  margin-top: 8px !important;
+-  color: var(--green);
+-  font-size: 13px;
+-  font-weight: 800;
+-}
+-
+-.debate-grid,
+-.dashboard-grid {
+-  display: grid;
+-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+-  gap: 24px;
+-  padding-top: 24px;
+-}
+-
+-.dashboard-actions {
+-  display: flex;
+-  flex-wrap: wrap;
+-  justify-content: flex-end;
+-  gap: 10px;
+-}
+-
+-.dashboard-empty {
+-  display: grid;
+-  grid-template-columns: auto minmax(0, 1fr) auto;
+-  gap: 16px;
+-  align-items: center;
+-  margin-top: 24px;
+-}
+-
+-.dashboard-grid {
+-  grid-template-columns: 330px minmax(0, 1fr);
+-}
+-
+-.watch-column,
+-.development-column {
+-  display: grid;
+-  align-content: start;
+-  gap: 18px;
+-}
+-
+-.watch-panel {
+-  padding: 16px;
+-}
+-
+-.watch-chip {
+-  display: grid;
+-  gap: 3px;
+-  padding: 10px;
+-  border: 1px solid var(--line);
+-  border-radius: 8px;
+-  background: #fbf7ed;
+-}
+-
+-.watch-chip span,
+-.quiet-text {
+-  color: var(--muted);
+-  font-size: 12px;
+-  font-weight: 850;
+-  text-transform: uppercase;
+-}
+-
+-.watch-chip strong {
+-  overflow-wrap: anywhere;
+-}
+-
+-.section-heading.stacked {
+-  margin-top: 22px;
+-}
+-
+-.save-button,
+-.primary-button,
+-.secondary-button {
+-  display: inline-flex;
+-  min-height: 40px;
+-  align-items: center;
+-  justify-content: center;
+-  gap: 8px;
+-  padding: 9px 12px;
+-  border-radius: 8px;
+-  cursor: pointer;
+-  font-weight: 850;
+-}
+-
+-.save-button {
+-  min-width: 132px;
+-  border: 1px solid #c7bda9;
+-  background: #fbf7ed;
+-  color: var(--navy);
+-}
+-
+-.save-button:hover {
+-  border-color: var(--gold);
+-}
+-
+-.save-button:disabled {
+-  cursor: wait;
+-  opacity: 0.7;
+-}
+-
+-.primary-button {
+-  border: 1px solid var(--navy);
+-  background: var(--navy);
+-  color: white;
+-}
+-
+-.secondary-button {
+-  border: 1px solid var(--line);
+-  background: var(--surface);
+-  color: var(--ink);
+-}
+-
+-.inline-flex {
+-  width: fit-content;
+-}
+-
+-.warning-panel {
+-  display: flex;
+-  gap: 12px;
+-  padding: 16px;
+-  color: var(--red);
+-}
+-
+-.warning-panel p {
+-  margin-bottom: 0;
+-}
+-
+-.auth-page {
+-  display: grid;
+-  min-height: calc(100vh - 76px);
+-  place-items: center;
+-  padding: 42px 0;
+-}
+-
+-.auth-panel {
+-  width: min(560px, 100%);
+-  padding: 26px;
+-}
+-
+-.auth-panel h1 {
+-  font-size: clamp(30px, 5vw, 48px);
+-}
+-
+-.auth-actions {
+-  display: flex;
+-  flex-wrap: wrap;
+-  gap: 10px;
+-  margin: 22px 0 16px;
+-}
+-
+-.text-link {
+-  color: var(--navy);
+-  font-weight: 800;
+-}
+-
+-.page-shell {
+-  padding: 34px 0 54px;
+-}
+-
+-.account-grid {
+-  display: grid;
+-  grid-template-columns: minmax(0, 420px) minmax(0, 1fr);
+-  gap: 18px;
+-}
+-
+-.profile-card,
+-.quiet-panel,
+-.empty-state {
+-  padding: 18px;
+-}
+-
+-.empty-state.small {
+-  box-shadow: none;
+-}
+-
+-.profile-card {
+-  display: flex;
+-  gap: 14px;
+-  align-items: center;
+-}
+-
+-.avatar {
+-  display: grid;
+-  width: 62px;
+-  height: 62px;
+-  place-items: center;
+-  overflow: hidden;
+-  border-radius: 50%;
+-  background: var(--green);
+-  color: white;
+-  font-size: 28px;
+-  font-weight: 900;
+-}
+-
+-.avatar img {
+-  width: 100%;
+-  height: 100%;
+-  object-fit: cover;
+-}
+-
+-.saved-row {
+-  display: flex;
+-  align-items: center;
+-  justify-content: space-between;
+-  gap: 18px;
+-  padding: 16px;
+-}
+-
+-.saved-row h2 {
+-  margin-bottom: 2px;
+-  font-size: 18px;
+-}
+-
+-.saved-row p {
+-  margin-bottom: 0;
+-}
+-
+-.saved-row > span {
+-  max-width: 280px;
+-  overflow: hidden;
+-  color: var(--muted);
+-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+-  font-size: 12px;
+-  text-overflow: ellipsis;
+-  white-space: nowrap;
+-}
+-
+-.saved-kind {
+-  color: var(--red);
+-  font-size: 11px;
+-  font-weight: 900;
+-  text-transform: uppercase;
+-}
+-
+-.kamerkompas-hero {
+-  align-items: center;
+-}
+-
+-.api-pill {
+-  display: inline-flex;
+-  width: fit-content;
+-  align-items: center;
+-  gap: 7px;
+-  padding: 5px 8px;
+-  border: 1px solid var(--line);
+-  border-radius: 999px;
+-  background: #eef3ef;
+-  color: var(--green);
+-  font-size: 12px;
+-  font-weight: 900;
+-  text-transform: uppercase;
+-}
+-
+-.api-pill.sample {
+-  background: #fff1de;
+-  color: #8a4d12;
+-}
+-
+-.api-pill::before {
+-  width: 7px;
+-  height: 7px;
+-  border-radius: 50%;
+-  background: currentColor;
+-  content: "";
+-}
+-
+-.ticker-band {
+-  display: grid;
+-  grid-template-columns: auto minmax(0, 1fr);
+-  gap: 14px;
+-  align-items: center;
+-  margin: 22px 0 4px;
+-  padding: 12px 14px;
+-  overflow: hidden;
+-  border: 1px solid #b9c7d4;
+-  border-radius: 8px;
+-  background: #eef4f8;
+-  color: var(--navy);
+-}
+-
+-.ticker-band > div {
+-  display: flex;
+-  min-width: 0;
+-  gap: 10px;
+-  overflow: hidden;
+-}
+-
+-.ticker-band span {
+-  flex: 0 0 auto;
+-  max-width: 320px;
+-  overflow: hidden;
+-  color: #314f67;
+-  font-size: 13px;
+-  font-weight: 750;
+-  text-overflow: ellipsis;
+-  white-space: nowrap;
+-}
+-
+-.content-grid.wide {
+-  grid-template-columns: minmax(0, 1fr) 380px;
+-}
+-
+-.overview-grid {
+-  display: grid;
+-  grid-template-columns: repeat(3, minmax(0, 1fr));
+-  gap: 22px;
+-  padding-top: 30px;
+-}
+-
+-.overview-grid.two {
+-  grid-template-columns: repeat(2, minmax(0, 1fr));
+-}
+-
+-.zaal-block {
+-  display: flex;
+-  align-items: center;
+-  justify-content: space-between;
+-  gap: 18px;
+-  margin: 20px 0 26px;
+-  padding: 18px;
+-  border: 1px solid #b7c8bf;
+-  border-radius: 8px;
+-  background: #edf5ef;
+-}
+-
+-.zaal-block h2,
+-.zaal-block p {
+-  margin-bottom: 0;
+-}
+-
+-.vote-card {
+-  display: grid;
+-  gap: 14px;
+-  padding: 16px;
+-  border: 1px solid var(--line);
+-  border-radius: 8px;
+-  background: var(--surface);
+-  box-shadow: var(--shadow);
+-}
+-
+-.vote-card-head {
+-  display: grid;
+-  grid-template-columns: minmax(0, 1fr) auto;
+-  gap: 14px;
+-}
+-
+-.vote-card-head h3,
+-.vote-card-head p {
+-  margin-bottom: 0;
+-}
+-
+-.vote-totals {
+-  display: flex;
+-  flex-wrap: wrap;
+-  gap: 8px;
+-  justify-content: flex-end;
+-}
+-
+-.vote-totals span,
+-.vote-chip {
+-  display: inline-flex;
+-  align-items: center;
+-  gap: 5px;
+-  padding: 6px 8px;
+-  border: 1px solid var(--line);
+-  border-radius: 999px;
+-  background: #fbf7ed;
+-  color: var(--muted);
+-  font-size: 12px;
+-  font-weight: 850;
+-}
+-
+-.vote-bar {
+-  display: flex;
+-  height: 12px;
+-  overflow: hidden;
+-  border-radius: 999px;
+-  background: #ece3d4;
+-}
+-
+-.vote-bar-for {
+-  background: var(--green);
+-}
+-
+-.vote-bar-against {
+-  background: var(--red);
+-}
+-
+-.vote-bar-abstain {
+-  background: var(--gold);
+-}
+-
+-.vote-lines {
+-  display: flex;
+-  flex-wrap: wrap;
+-  gap: 8px;
+-}
+-
+-.vote-chip i {
+-  width: 8px;
+-  height: 8px;
+-  border-radius: 50%;
+-}
+-
+-.seat-chart {
+-  display: grid;
+-  gap: 14px;
+-  padding: 16px;
+-  border: 1px solid var(--line);
+-  border-radius: 8px;
+-  background: var(--surface);
+-  box-shadow: var(--shadow);
+-}
+-
+-.seat-stack {
+-  display: flex;
+-  height: 18px;
+-  overflow: hidden;
+-  border-radius: 999px;
+-  background: #e7dfd1;
+-}
+-
+-.seat-list,
+-.faction-grid,
+-.member-grid {
+-  display: grid;
+-  gap: 12px;
+-}
+-
+-.seat-row {
+-  display: grid;
+-  grid-template-columns: 16px minmax(0, 1fr) auto;
+-  gap: 9px;
+-  align-items: center;
+-  color: var(--muted);
+-  font-size: 13px;
+-  font-weight: 800;
+-}
+-
+-.seat-row i,
+-.faction-swatch {
+-  display: block;
+-  width: 12px;
+-  height: 12px;
+-  border-radius: 50%;
+-}
+-
+-.seat-row span {
+-  overflow: hidden;
+-  text-overflow: ellipsis;
+-  white-space: nowrap;
+-}
+-
+-.source-panel {
+-  display: grid;
+-  grid-template-columns: auto minmax(0, 1fr);
+-  gap: 12px;
+-  align-items: center;
+-  box-shadow: none;
+-}
+-
+-.source-panel strong {
+-  display: block;
+-  margin-bottom: 6px;
+-}
+-
+-.list-page {
+-  padding-top: 24px;
+-}
+-
+-.letter-card {
+-  align-items: center;
+-}
+-
+-.letter-actions {
+-  display: flex;
+-  flex-wrap: wrap;
+-  gap: 8px;
+-  margin-top: 14px;
+-}
+-
+-.member-grid {
+-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+-  padding-top: 24px;
+-}
+-
+-.member-card,
+-.faction-card {
+-  display: grid;
+-  gap: 14px;
+-  padding: 16px;
+-  border: 1px solid var(--line);
+-  border-top: 5px solid var(--navy);
+-  border-radius: 8px;
+-  background: var(--surface);
+-  box-shadow: var(--shadow);
+-}
+-
+-.member-avatar {
+-  position: relative;
+-  display: grid;
+-  width: 68px;
+-  height: 68px;
+-  place-items: center;
+-  overflow: hidden;
+-  border-radius: 50%;
+-  color: white;
+-  font-size: 26px;
+-  font-weight: 950;
+-}
+-
+-.member-avatar img {
+-  position: absolute;
+-  inset: 0;
+-  z-index: 1;
+-  width: 100%;
+-  height: 100%;
+-  object-fit: cover;
+-}
+-
+-.member-avatar span {
+-  position: relative;
+-  z-index: 0;
+-}
+-
+-.member-body h2,
+-.member-body p,
+-.faction-card h2,
+-.faction-card p {
+-  margin-bottom: 0;
+-}
+-
+-.fracties-layout {
+-  display: grid;
+-  grid-template-columns: 360px minmax(0, 1fr);
+-  gap: 22px;
+-  padding-top: 24px;
+-}
+-
+-.faction-grid {
+-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+-}
+-
+-.faction-card {
+-  grid-template-columns: auto minmax(0, 1fr);
+-  align-items: start;
+-}
+-
+-.faction-card .result-actions {
+-  grid-column: 1 / -1;
+-}
+-
+-.detail-page {
+-  display: grid;
+-  gap: 18px;
+-}
+-
+-.back-link {
+-  display: inline-flex;
+-  width: fit-content;
+-  align-items: center;
+-  gap: 8px;
+-}
+-
+-.detail-panel {
+-  display: grid;
+-  grid-template-columns: minmax(0, 1fr) auto;
+-  gap: 20px;
+-  align-items: end;
+-  padding: 26px 0 24px;
+-  border-bottom: 1px solid var(--line);
+-}
+-
+-.detail-panel h1 {
+-  margin-bottom: 10px;
+-  font-size: clamp(34px, 5vw, 58px);
+-}
+-
+-.detail-panel p {
+-  max-width: 760px;
+-  margin-bottom: 0;
+-}
+-
+-.detail-actions {
+-  display: flex;
+-  flex-wrap: wrap;
+-  gap: 10px;
+-  justify-content: flex-end;
+-}
+-
+-.detail-meta {
+-  box-shadow: none;
+-}
+-
+-.detail-grid {
+-  display: grid;
+-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+-  gap: 10px;
+-  margin: 0;
+-}
+-
+-.detail-grid div {
+-  padding: 10px;
+-  border: 1px solid var(--line);
+-  border-radius: 8px;
+-  background: #fbf7ed;
+-}
+-
+-.detail-grid dt {
+-  color: var(--muted);
+-  font-size: 11px;
+-  font-weight: 900;
+-  text-transform: uppercase;
+-}
+-
+-.detail-grid dd {
+-  margin: 4px 0 0;
+-  overflow-wrap: anywhere;
+-  font-weight: 750;
+-}
+-
+-@media (max-width: 900px) {
+-  .site-header,
+-  .status-band,
+-  .content-grid,
+-  .account-grid,
+-  .search-heading,
+-  .dashboard-heading,
+-  .debate-grid,
+-  .dashboard-grid,
+-  .content-grid.wide,
+-  .overview-grid,
+-  .overview-grid.two,
+-  .fracties-layout {
+-    grid-template-columns: 1fr;
+-  }
+-
+-  .site-header {
+-    align-items: flex-start;
+-  }
+-
+-  .status-metrics {
+-    grid-template-columns: 1fr;
+-  }
+-
+-  .activity-card {
+-    grid-template-columns: 42px minmax(0, 1fr);
+-  }
+-
+-  .activity-card .save-button {
+-    grid-column: 1 / -1;
+-    width: 100%;
+-  }
+-
+-  .dashboard-actions {
+-    justify-content: flex-start;
+-  }
+-
+-  .result-card {
+-    grid-template-columns: 1fr;
+-  }
+-
+-  .result-card .save-button {
+-    width: 100%;
+-  }
+-
+-  .result-actions {
+-    display: grid;
+-    justify-content: stretch;
+-  }
+-
+-  .dashboard-empty {
+-    grid-template-columns: 1fr;
+-  }
+-
+-  .vote-card-head,
+-  .faction-card,
+-  .detail-panel {
+-    grid-template-columns: 1fr;
+-  }
+-
+-  .vote-totals,
+-  .detail-actions {
+-    justify-content: flex-start;
+-  }
+-
+-  .zaal-block {
+-    display: grid;
+-  }
+-}
+-
+-@media (max-width: 620px) {
+-  .site-header {
+-    position: static;
+-  }
+-
+-  .main-nav {
+-    justify-content: flex-start;
+-  }
+-
+-  .dashboard,
+-  .page-shell,
+-  .auth-page {
+-    width: min(100% - 24px, 1180px);
+-  }
+-
+-  h1 {
+-    font-size: 38px;
+-  }
+-
+-  .status-band {
+-    padding-top: 18px;
+-  }
+-
+-  .saved-row {
+-    display: grid;
+-  }
+-
+-  .search-form {
+-    grid-template-columns: auto minmax(0, 1fr);
+-  }
+-
+-  .search-form button {
+-    grid-column: 1 / -1;
+-    width: 100%;
+-  }
+-
+-  .ticker-band {
+-    grid-template-columns: 1fr;
+-  }
+-
+-  .ticker-band > div {
+-    display: grid;
+-  }
+-
+-  .ticker-band span {
+-    max-width: 100%;
+-  }
+-}
++:root {
++  --paper: #f5f1e8;
++  --surface: #fffdf8;
++  --ink: #171615;
++  --muted: #655f56;
++  --line: #d7cfc0;
++  --navy: #17324d;
++  --red: #a33b2f;
++  --green: #2f6f5e;
++  --gold: #b0832f;
++  --shadow: 0 16px 40px rgba(31, 29, 26, 0.08);
++}
++
++* {
++  box-sizing: border-box;
++}
++
++html {
++  background: var(--paper);
++  color: var(--ink);
++}
++
++body {
++  min-height: 100vh;
++  margin: 0;
++  font-family:
++    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
++    sans-serif;
++  letter-spacing: 0;
++}
++
++a {
++  color: inherit;
++  text-decoration: none;
++}
++
++button,
++input {
++  font: inherit;
++}
++
++input {
++  min-width: 0;
++}
++
++.site-header {
++  position: sticky;
++  top: 0;
++  z-index: 20;
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: 24px;
++  padding: 14px clamp(18px, 4vw, 48px);
++  background: rgba(245, 241, 232, 0.92);
++  border-bottom: 1px solid var(--line);
++  backdrop-filter: blur(14px);
++}
++
++.brand {
++  display: inline-flex;
++  align-items: center;
++  gap: 10px;
++  color: var(--navy);
++  font-weight: 800;
++}
++
++.brand span {
++  display: grid;
++  line-height: 1.05;
++}
++
++.brand small {
++  margin-top: 2px;
++  color: var(--muted);
++  font-size: 11px;
++  font-weight: 600;
++  text-transform: uppercase;
++}
++
++.main-nav {
++  display: flex;
++  align-items: center;
++  flex-wrap: wrap;
++  justify-content: flex-end;
++  gap: 8px;
++}
++
++.main-nav a,
++.icon-button {
++  display: inline-flex;
++  min-height: 38px;
++  align-items: center;
++  gap: 7px;
++  padding: 8px 10px;
++  border: 1px solid transparent;
++  background: transparent;
++  color: var(--muted);
++  cursor: pointer;
++  font-size: 14px;
++  font-weight: 700;
++}
++
++.main-nav a:hover,
++.icon-button:hover {
++  color: var(--ink);
++  border-color: var(--line);
++}
++
++.nav-cta {
++  background: var(--navy) !important;
++  color: white !important;
++}
++
++.dashboard,
++.page-shell,
++.auth-page {
++  width: min(1180px, calc(100% - 36px));
++  margin: 0 auto;
++}
++
++.dashboard {
++  padding: 28px 0 54px;
++}
++
++.status-band {
++  display: grid;
++  grid-template-columns: minmax(0, 1fr) minmax(310px, 460px);
++  gap: 24px;
++  align-items: end;
++  padding: 34px 0 28px;
++  border-bottom: 1px solid var(--line);
++}
++
++.eyebrow {
++  margin: 0 0 8px;
++  color: var(--red);
++  font-size: 12px;
++  font-weight: 900;
++  text-transform: uppercase;
++}
++
++h1,
++h2,
++h3,
++p {
++  margin-top: 0;
++}
++
++h1 {
++  max-width: 760px;
++  margin-bottom: 12px;
++  font-size: clamp(34px, 6vw, 70px);
++  line-height: 0.98;
++}
++
++h2 {
++  margin-bottom: 8px;
++  font-size: 24px;
++  line-height: 1.15;
++}
++
++h3 {
++  margin-bottom: 7px;
++  font-size: 17px;
++  line-height: 1.3;
++}
++
++p {
++  color: var(--muted);
++  line-height: 1.6;
++}
++
++.status-band p {
++  max-width: 620px;
++  margin-bottom: 0;
++  font-size: 18px;
++}
++
++.status-metrics {
++  display: grid;
++  grid-template-columns: 1fr 1fr;
++  gap: 10px;
++}
++
++.status-metrics div,
++.status-metrics a {
++  display: grid;
++  min-height: 92px;
++  align-content: space-between;
++  gap: 8px;
++  padding: 14px;
++  border: 1px solid var(--line);
++  border-radius: 8px;
++  background: var(--surface);
++}
++
++.status-metrics a {
++  grid-column: 1 / -1;
++  min-height: 54px;
++  grid-template-columns: auto 1fr;
++  align-items: center;
++  align-content: center;
++  color: var(--navy);
++  font-weight: 800;
++}
++
++.status-metrics span {
++  color: var(--muted);
++  font-size: 12px;
++  font-weight: 800;
++  text-transform: uppercase;
++}
++
++.status-metrics strong {
++  font-size: 18px;
++}
++
++.content-grid {
++  display: grid;
++  grid-template-columns: minmax(0, 1fr) 340px;
++  gap: 28px;
++  padding-top: 28px;
++}
++
++.section-heading {
++  margin-bottom: 18px;
++}
++
++.search-heading,
++.dashboard-heading {
++  display: grid;
++  grid-template-columns: minmax(0, 1fr) minmax(320px, 500px);
++  gap: 20px;
++  align-items: end;
++  padding-bottom: 22px;
++  border-bottom: 1px solid var(--line);
++}
++
++.search-heading h1,
++.dashboard-heading h1 {
++  margin-bottom: 0;
++  font-size: clamp(34px, 5vw, 58px);
++}
++
++.section-heading.compact {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: 16px;
++  margin-bottom: 14px;
++}
++
++.section-heading.compact h2,
++.section-heading.compact p {
++  margin-bottom: 0;
++}
++
++.activity-list,
++.dossier-list,
++.saved-list,
++.result-list,
++.watch-list {
++  display: grid;
++  gap: 12px;
++}
++
++.activity-card,
++.dossier-card,
++.saved-row,
++.result-card,
++.watch-panel,
++.profile-card,
++.quiet-panel,
++.empty-state,
++.warning-panel,
++.auth-panel {
++  border: 1px solid var(--line);
++  border-radius: 8px;
++  background: var(--surface);
++  box-shadow: var(--shadow);
++}
++
++.activity-card {
++  display: grid;
++  grid-template-columns: 42px minmax(0, 1fr) auto;
++  gap: 14px;
++  align-items: start;
++  padding: 16px;
++}
++
++.activity-icon {
++  display: grid;
++  width: 42px;
++  height: 42px;
++  place-items: center;
++  border-radius: 8px;
++  background: #e9efe9;
++  color: var(--green);
++}
++
++.activity-body p,
++.dossier-card p {
++  margin-bottom: 0;
++}
++
++.activity-meta {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 8px;
++  margin-bottom: 6px;
++  color: var(--muted);
++  font-size: 12px;
++  font-weight: 800;
++  text-transform: uppercase;
++}
++
++.dossier-card {
++  display: grid;
++  gap: 14px;
++  padding: 16px;
++}
++
++.search-form {
++  display: grid;
++  grid-template-columns: auto minmax(0, 1fr) auto;
++  gap: 10px;
++  align-items: center;
++  padding: 10px;
++  border: 1px solid var(--line);
++  border-radius: 8px;
++  background: var(--surface);
++  box-shadow: var(--shadow);
++}
++
++.search-form input {
++  width: 100%;
++  min-height: 42px;
++  border: 0;
++  outline: 0;
++  background: transparent;
++  color: var(--ink);
++}
++
++.result-count {
++  display: inline-flex;
++  align-items: center;
++  gap: 8px;
++  margin: 18px 0 22px;
++  padding: 8px 12px;
++  border: 1px solid var(--line);
++  border-radius: 8px;
++  background: #eef3ef;
++  color: var(--green);
++  font-weight: 800;
++}
++
++.result-count span {
++  color: var(--muted);
++  font-size: 14px;
++}
++
++.search-results {
++  display: grid;
++  gap: 28px;
++}
++
++.result-section {
++  padding-bottom: 8px;
++}
++
++.result-card {
++  display: grid;
++  grid-template-columns: minmax(0, 1fr) auto;
++  gap: 16px;
++  align-items: start;
++  padding: 16px;
++}
++
++.result-card.compact {
++  box-shadow: none;
++}
++
++.result-main {
++  min-width: 0;
++}
++
++.result-actions {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 8px;
++  align-items: center;
++  justify-content: flex-end;
++}
++
++.result-card h3 {
++  margin-bottom: 6px;
++}
++
++.result-title-link {
++  color: var(--navy);
++  text-decoration: underline;
++  text-decoration-color: rgba(23, 50, 77, 0.28);
++  text-decoration-thickness: 2px;
++  text-underline-offset: 4px;
++}
++
++.result-title-link:hover {
++  color: var(--red);
++  text-decoration-color: currentColor;
++}
++
++.result-card p {
++  margin-bottom: 0;
++}
++
++.result-meta {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 8px;
++  margin-bottom: 8px;
++  color: var(--muted);
++  font-size: 12px;
++  font-weight: 850;
++  text-transform: uppercase;
++}
++
++.result-meta span {
++  display: inline-flex;
++  align-items: center;
++  gap: 4px;
++}
++
++.match-label {
++  margin-top: 8px !important;
++  color: var(--green);
++  font-size: 13px;
++  font-weight: 800;
++}
++
++.debate-grid,
++.dashboard-grid {
++  display: grid;
++  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
++  gap: 24px;
++  padding-top: 24px;
++}
++
++.dashboard-actions {
++  display: flex;
++  flex-wrap: wrap;
++  justify-content: flex-end;
++  gap: 10px;
++}
++
++.dashboard-empty {
++  display: grid;
++  grid-template-columns: auto minmax(0, 1fr) auto;
++  gap: 16px;
++  align-items: center;
++  margin-top: 24px;
++}
++
++.dashboard-grid {
++  grid-template-columns: 330px minmax(0, 1fr);
++}
++
++.watch-column,
++.development-column {
++  display: grid;
++  align-content: start;
++  gap: 18px;
++}
++
++.watch-panel {
++  padding: 16px;
++}
++
++.watch-chip {
++  display: grid;
++  gap: 3px;
++  padding: 10px;
++  border: 1px solid var(--line);
++  border-radius: 8px;
++  background: #fbf7ed;
++}
++
++.watch-chip span,
++.quiet-text {
++  color: var(--muted);
++  font-size: 12px;
++  font-weight: 850;
++  text-transform: uppercase;
++}
++
++.watch-chip strong {
++  overflow-wrap: anywhere;
++}
++
++.section-heading.stacked {
++  margin-top: 22px;
++}
++
++.save-button,
++.primary-button,
++.secondary-button {
++  display: inline-flex;
++  min-height: 40px;
++  align-items: center;
++  justify-content: center;
++  gap: 8px;
++  padding: 9px 12px;
++  border-radius: 8px;
++  cursor: pointer;
++  font-weight: 850;
++}
++
++.save-button {
++  min-width: 132px;
++  border: 1px solid #c7bda9;
++  background: #fbf7ed;
++  color: var(--navy);
++}
++
++.save-button:hover {
++  border-color: var(--gold);
++}
++
++.save-button:disabled {
++  cursor: wait;
++  opacity: 0.7;
++}
++
++.primary-button {
++  border: 1px solid var(--navy);
++  background: var(--navy);
++  color: white;
++}
++
++.secondary-button {
++  border: 1px solid var(--line);
++  background: var(--surface);
++  color: var(--ink);
++}
++
++.inline-flex {
++  width: fit-content;
++}
++
++.warning-panel {
++  display: flex;
++  gap: 12px;
++  padding: 16px;
++  color: var(--red);
++}
++
++.warning-panel p {
++  margin-bottom: 0;
++}
++
++.auth-page {
++  display: grid;
++  min-height: calc(100vh - 76px);
++  place-items: center;
++  padding: 42px 0;
++}
++
++.auth-panel {
++  width: min(560px, 100%);
++  padding: 26px;
++}
++
++.auth-panel h1 {
++  font-size: clamp(30px, 5vw, 48px);
++}
++
++.auth-actions {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 10px;
++  margin: 22px 0 16px;
++}
++
++.text-link {
++  color: var(--navy);
++  font-weight: 800;
++}
++
++.page-shell {
++  padding: 34px 0 54px;
++}
++
++.account-grid {
++  display: grid;
++  grid-template-columns: minmax(0, 420px) minmax(0, 1fr);
++  gap: 18px;
++}
++
++.profile-card,
++.quiet-panel,
++.empty-state {
++  padding: 18px;
++}
++
++.empty-state.small {
++  box-shadow: none;
++}
++
++.profile-card {
++  display: flex;
++  gap: 14px;
++  align-items: center;
++}
++
++.avatar {
++  display: grid;
++  width: 62px;
++  height: 62px;
++  place-items: center;
++  overflow: hidden;
++  border-radius: 50%;
++  background: var(--green);
++  color: white;
++  font-size: 28px;
++  font-weight: 900;
++}
++
++.avatar img {
++  width: 100%;
++  height: 100%;
++  object-fit: cover;
++}
++
++.saved-row {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: 18px;
++  padding: 16px;
++}
++
++.saved-row h2 {
++  margin-bottom: 2px;
++  font-size: 18px;
++}
++
++.saved-row p {
++  margin-bottom: 0;
++}
++
++.saved-row > span {
++  max-width: 280px;
++  overflow: hidden;
++  color: var(--muted);
++  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
++  font-size: 12px;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++}
++
++.saved-kind {
++  color: var(--red);
++  font-size: 11px;
++  font-weight: 900;
++  text-transform: uppercase;
++}
++
++.kamerkompas-hero {
++  align-items: center;
++}
++
++.api-pill {
++  display: inline-flex;
++  width: fit-content;
++  align-items: center;
++  gap: 7px;
++  padding: 5px 8px;
++  border: 1px solid var(--line);
++  border-radius: 999px;
++  background: #eef3ef;
++  color: var(--green);
++  font-size: 12px;
++  font-weight: 900;
++  text-transform: uppercase;
++}
++
++.api-pill.sample {
++  background: #fff1de;
++  color: #8a4d12;
++}
++
++.api-pill::before {
++  width: 7px;
++  height: 7px;
++  border-radius: 50%;
++  background: currentColor;
++  content: "";
++}
++
++.ticker-band {
++  display: grid;
++  grid-template-columns: auto minmax(0, 1fr);
++  gap: 14px;
++  align-items: center;
++  margin: 22px 0 4px;
++  padding: 12px 14px;
++  overflow: hidden;
++  border: 1px solid #b9c7d4;
++  border-radius: 8px;
++  background: #eef4f8;
++  color: var(--navy);
++}
++
++.ticker-band > div {
++  display: flex;
++  min-width: 0;
++  gap: 10px;
++  overflow: hidden;
++}
++
++.ticker-band span {
++  flex: 0 0 auto;
++  max-width: 320px;
++  overflow: hidden;
++  color: #314f67;
++  font-size: 13px;
++  font-weight: 750;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++}
++
++.content-grid.wide {
++  grid-template-columns: minmax(0, 1fr) 380px;
++}
++
++.overview-grid {
++  display: grid;
++  grid-template-columns: repeat(3, minmax(0, 1fr));
++  gap: 22px;
++  padding-top: 30px;
++}
++
++.overview-grid.two {
++  grid-template-columns: repeat(2, minmax(0, 1fr));
++}
++
++.zaal-block {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: 18px;
++  margin: 20px 0 26px;
++  padding: 18px;
++  border: 1px solid #b7c8bf;
++  border-radius: 8px;
++  background: #edf5ef;
++}
++
++.zaal-block h2,
++.zaal-block p {
++  margin-bottom: 0;
++}
++
++.vote-card {
++  display: grid;
++  gap: 14px;
++  padding: 16px;
++  border: 1px solid var(--line);
++  border-radius: 8px;
++  background: var(--surface);
++  box-shadow: var(--shadow);
++}
++
++.vote-card-head {
++  display: grid;
++  grid-template-columns: minmax(0, 1fr) auto;
++  gap: 14px;
++}
++
++.vote-card-head h3,
++.vote-card-head p {
++  margin-bottom: 0;
++}
++
++.vote-totals {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 8px;
++  justify-content: flex-end;
++}
++
++.vote-totals span,
++.vote-chip {
++  display: inline-flex;
++  align-items: center;
++  gap: 5px;
++  padding: 6px 8px;
++  border: 1px solid var(--line);
++  border-radius: 999px;
++  background: #fbf7ed;
++  color: var(--muted);
++  font-size: 12px;
++  font-weight: 850;
++}
++
++.vote-bar {
++  display: flex;
++  height: 12px;
++  overflow: hidden;
++  border-radius: 999px;
++  background: #ece3d4;
++}
++
++.vote-bar-for {
++  background: var(--green);
++}
++
++.vote-bar-against {
++  background: var(--red);
++}
++
++.vote-bar-abstain {
++  background: var(--gold);
++}
++
++.vote-lines {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 8px;
++}
++
++.vote-chip i {
++  width: 8px;
++  height: 8px;
++  border-radius: 50%;
++}
++
++.seat-chart {
++  display: grid;
++  gap: 14px;
++  padding: 16px;
++  border: 1px solid var(--line);
++  border-radius: 8px;
++  background: var(--surface);
++  box-shadow: var(--shadow);
++}
++
++.seat-stack {
++  display: flex;
++  height: 18px;
++  overflow: hidden;
++  border-radius: 999px;
++  background: #e7dfd1;
++}
++
++.seat-list,
++.faction-grid,
++.member-grid {
++  display: grid;
++  gap: 12px;
++}
++
++.seat-row {
++  display: grid;
++  grid-template-columns: 16px minmax(0, 1fr) auto;
++  gap: 9px;
++  align-items: center;
++  color: var(--muted);
++  font-size: 13px;
++  font-weight: 800;
++}
++
++.seat-row i,
++.faction-swatch {
++  display: block;
++  width: 12px;
++  height: 12px;
++  border-radius: 50%;
++}
++
++.seat-row span {
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++}
++
++.source-panel {
++  display: grid;
++  grid-template-columns: auto minmax(0, 1fr);
++  gap: 12px;
++  align-items: center;
++  box-shadow: none;
++}
++
++.source-panel strong {
++  display: block;
++  margin-bottom: 6px;
++}
++
++.list-page {
++  padding-top: 24px;
++}
++
++.letter-card {
++  align-items: center;
++}
++
++.letter-actions {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 8px;
++  margin-top: 14px;
++}
++
++.member-grid {
++  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
++  padding-top: 24px;
++}
++
++.member-card,
++.faction-card {
++  display: grid;
++  gap: 14px;
++  padding: 16px;
++  border: 1px solid var(--line);
++  border-top: 5px solid var(--navy);
++  border-radius: 8px;
++  background: var(--surface);
++  box-shadow: var(--shadow);
++}
++
++.member-avatar {
++  position: relative;
++  display: grid;
++  width: 68px;
++  height: 68px;
++  place-items: center;
++  overflow: hidden;
++  border-radius: 50%;
++  color: white;
++  font-size: 26px;
++  font-weight: 950;
++}
++
++.member-avatar img {
++  position: absolute;
++  inset: 0;
++  z-index: 1;
++  width: 100%;
++  height: 100%;
++  object-fit: cover;
++}
++
++.member-avatar span {
++  position: relative;
++  z-index: 0;
++}
++
++.member-body h2,
++.member-body p,
++.faction-card h2,
++.faction-card p {
++  margin-bottom: 0;
++}
++
++.fracties-layout {
++  display: grid;
++  grid-template-columns: 360px minmax(0, 1fr);
++  gap: 22px;
++  padding-top: 24px;
++}
++
++.faction-grid {
++  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
++}
++
++.faction-card {
++  grid-template-columns: auto minmax(0, 1fr);
++  align-items: start;
++}
++
++.faction-card .result-actions {
++  grid-column: 1 / -1;
++}
++
++.detail-page {
++  display: grid;
++  gap: 18px;
++}
++
++.back-link {
++  display: inline-flex;
++  width: fit-content;
++  align-items: center;
++  gap: 8px;
++}
++
++.detail-panel {
++  display: grid;
++  grid-template-columns: minmax(0, 1fr) auto;
++  gap: 20px;
++  align-items: end;
++  padding: 26px 0 24px;
++  border-bottom: 1px solid var(--line);
++}
++
++.detail-panel h1 {
++  margin-bottom: 10px;
++  font-size: clamp(34px, 5vw, 58px);
++}
++
++.detail-panel p {
++  max-width: 760px;
++  margin-bottom: 0;
++}
++
++.detail-actions {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 10px;
++  justify-content: flex-end;
++}
++
++.detail-meta {
++  box-shadow: none;
++}
++
++.detail-grid {
++  display: grid;
++  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
++  gap: 10px;
++  margin: 0;
++}
++
++.detail-grid div {
++  padding: 10px;
++  border: 1px solid var(--line);
++  border-radius: 8px;
++  background: #fbf7ed;
++}
++
++.detail-grid dt {
++  color: var(--muted);
++  font-size: 11px;
++  font-weight: 900;
++  text-transform: uppercase;
++}
++
++.detail-grid dd {
++  margin: 4px 0 0;
++  overflow-wrap: anywhere;
++  font-weight: 750;
++}
++
++@media (max-width: 900px) {
++  .site-header,
++  .status-band,
++  .content-grid,
++  .account-grid,
++  .search-heading,
++  .dashboard-heading,
++  .debate-grid,
++  .dashboard-grid,
++  .content-grid.wide,
++  .overview-grid,
++  .overview-grid.two,
++  .fracties-layout {
++    grid-template-columns: 1fr;
++  }
++
++  .site-header {
++    align-items: flex-start;
++  }
++
++  .status-metrics {
++    grid-template-columns: 1fr;
++  }
++
++  .activity-card {
++    grid-template-columns: 42px minmax(0, 1fr);
++  }
++
++  .activity-card .save-button {
++    grid-column: 1 / -1;
++    width: 100%;
++  }
++
++  .dashboard-actions {
++    justify-content: flex-start;
++  }
++
++  .result-card {
++    grid-template-columns: 1fr;
++  }
++
++  .result-card .save-button {
++    width: 100%;
++  }
++
++  .result-actions {
++    display: grid;
++    justify-content: stretch;
++  }
++
++  .dashboard-empty {
++    grid-template-columns: 1fr;
++  }
++
++  .vote-card-head,
++  .faction-card,
++  .detail-panel {
++    grid-template-columns: 1fr;
++  }
++
++  .vote-totals,
++  .detail-actions {
++    justify-content: flex-start;
++  }
++
++  .zaal-block {
++    display: grid;
++  }
++}
++
++@media (max-width: 620px) {
++  .site-header {
++    position: static;
++  }
++
++  .main-nav {
++    justify-content: flex-start;
++  }
++
++  .dashboard,
++  .page-shell,
++  .auth-page {
++    width: min(100% - 24px, 1180px);
++  }
++
++  h1 {
++    font-size: 38px;
++  }
++
++  .status-band {
++    padding-top: 18px;
++  }
++
++  .saved-row {
++    display: grid;
++  }
++
++  .search-form {
++    grid-template-columns: auto minmax(0, 1fr);
++  }
++
++  .search-form button {
++    grid-column: 1 / -1;
++    width: 100%;
++  }
++
++  .ticker-band {
++    grid-template-columns: 1fr;
++  }
++
++  .ticker-band > div {
++    display: grid;
++  }
++
++  .ticker-band span {
++    max-width: 100%;
++  }
++}
+diff --git a/app/kamerbrieven/page.tsx b/app/kamerbrieven/page.tsx
+--- a/app/kamerbrieven/page.tsx
++++ b/app/kamerbrieven/page.tsx
+@@ -1,75 +1,79 @@
+-import Link from "next/link";
+-import { FileText, Search } from "lucide-react";
+-import { ApiStatusPill } from "@/components/api-status-pill";
+-import { SaveButton } from "@/components/save-button";
+-import { documentResourceUrl, getLettersOverview } from "@/lib/tk";
+-
+-type KamerbrievenPageProps = {
+-  searchParams?: Promise<{ q?: string }>;
+-};
+-
+-function stringMeta(meta: Record<string, unknown>, key: string) {
+-  const value = meta[key];
+-  return typeof value === "string" ? value : undefined;
+-}
+-
+-export default async function KamerbrievenPage({ searchParams }: KamerbrievenPageProps) {
+-  const params = await searchParams;
+-  const query = params?.q?.trim() ?? "";
+-  const letters = await getLettersOverview(query);
+-
+-  return (
+-    <main className="page-shell">
+-      <section className="section-heading search-heading">
+-        <div>
+-          <p className="eyebrow">Kamerbrieven</p>
+-          <h1>Brieven van de regering uit de Document-feed.</h1>
+-        </div>
+-        <form className="search-form" action="/kamerbrieven">
+-          <Search size={18} aria-hidden="true" />
+-          <input name="q" defaultValue={query} placeholder="Zoek in onderwerp, titel of documentnummer" />
+-          <button className="primary-button" type="submit">Zoek</button>
+-        </form>
+-      </section>
+-
+-      <div className="result-count" aria-live="polite">
+-        <strong>{letters.items.length}</strong>
+-        <span>{query ? `Kamerbrieven voor "${query}"` : "recente Kamerbrieven"}</span>
+-        <ApiStatusPill apiOk={letters.apiOk} />
+-      </div>
+-
+-      <section className="result-list list-page">
+-        {letters.items.map((item) => {
+-          const documentId = stringMeta(item.meta, "Id") ?? item.id;
+-          const resourceUrl = documentResourceUrl(documentId);
+-
+-          return (
+-            <article className="result-card letter-card" key={`${item.kind}-${item.id}`}>
+-              <div className="result-main">
+-                <div className="result-meta">
+-                  <span>{item.eyebrow}</span>
+-                  <span>{item.date}</span>
+-                  {item.status ? <span>{item.status}</span> : null}
+-                </div>
+-                <h3>{item.title}</h3>
+-                <p>{item.description}</p>
+-                <div className="letter-actions">
+-                  <Link className="secondary-button inline-flex" href={`/kamerbrieven/${encodeURIComponent(item.id)}`}>
+-                    Open detail
+-                  </Link>
+-                  {resourceUrl ? (
+-                    <a className="secondary-button inline-flex" href={resourceUrl} target="_blank" rel="noreferrer">
+-                      <FileText size={16} aria-hidden="true" />
+-                      PDF
+-                    </a>
+-                  ) : null}
+-                </div>
+-              </div>
+-              <SaveButton kind="kamerbrief" refId={item.id} label={item.title} meta={item.meta} />
+-            </article>
+-          );
+-        })}
+-      </section>
+-    </main>
+-  );
+-}
++import Link from "next/link";
++import { FileText, Search } from "lucide-react";
++import { ApiStatusPill } from "@/components/api-status-pill";
++import { SaveButton } from "@/components/save-button";
++import { documentResourceUrl, getLettersOverview } from "@/lib/tk";
++
++type KamerbrievenPageProps = {
++  searchParams?: Promise<{ q?: string }>;
++};
++
++function stringMeta(meta: Record<string, unknown>, key: string) {
++  const value = meta[key];
++  return typeof value === "string" ? value : undefined;
++}
++
++export default async function KamerbrievenPage({ searchParams }: KamerbrievenPageProps) {
++  const params = await searchParams;
++  const query = params?.q?.trim() ?? "";
++  const letters = await getLettersOverview(query);
++
++  return (
++    <main className="page-shell">
++      <section className="section-heading search-heading">
++        <div>
++          <p className="eyebrow">Kamerbrieven</p>
++          <h1>Brieven van de regering uit de Document-feed.</h1>
++        </div>
++        <form className="search-form" action="/kamerbrieven">
++          <Search size={18} aria-hidden="true" />
++          <input name="q" defaultValue={query} placeholder="Zoek in onderwerp, titel of documentnummer" />
++          <button className="primary-button" type="submit">Zoek</button>
++        </form>
++      </section>
++
++      <div className="result-count" aria-live="polite">
++        <strong>{letters.items.length}</strong>
++        <span>{query ? `Kamerbrieven voor "${query}"` : "recente Kamerbrieven"}</span>
++        <ApiStatusPill apiOk={letters.apiOk} />
++      </div>
++
++      <section className="result-list list-page">
++        {letters.items.map((item) => {
++          const documentId = stringMeta(item.meta, "Id") ?? item.id;
++          const resourceUrl = documentResourceUrl(documentId);
++
++          return (
++            <article className="result-card letter-card" key={`${item.kind}-${item.id}`}>
++              <div className="result-main">
++                <div className="result-meta">
++                  <span>{item.eyebrow}</span>
++                  <span>{item.date}</span>
++                  {item.status ? <span>{item.status}</span> : null}
++                </div>
++                <h3>
++                  <Link className="result-title-link" href={`/kamerbrieven/${encodeURIComponent(item.id)}`}>
++                    {item.title}
++                  </Link>
++                </h3>
++                <p>{item.description}</p>
++                <div className="letter-actions">
++                  <Link className="secondary-button inline-flex" href={`/kamerbrieven/${encodeURIComponent(item.id)}`}>
++                    Open detail
++                  </Link>
++                  {resourceUrl ? (
++                    <a className="secondary-button inline-flex" href={resourceUrl} target="_blank" rel="noreferrer">
++                      <FileText size={16} aria-hidden="true" />
++                      PDF
++                    </a>
++                  ) : null}
++                </div>
++              </div>
++              <SaveButton kind="kamerbrief" refId={item.id} label={item.title} meta={item.meta} />
++            </article>
++          );
++        })}
++      </section>
++    </main>
++  );
++}
+diff --git a/app/kamerleden/page.tsx b/app/kamerleden/page.tsx
+--- a/app/kamerleden/page.tsx
++++ b/app/kamerleden/page.tsx
+@@ -1,76 +1,80 @@
+-import Link from "next/link";
+-import { Search, UserCircle } from "lucide-react";
+-import { ApiStatusPill } from "@/components/api-status-pill";
+-import { SaveButton } from "@/components/save-button";
+-import { factionColor } from "@/lib/factions";
+-import { getMembersOverview, personResourceUrl } from "@/lib/tk";
+-
+-type KamerledenPageProps = {
+-  searchParams?: Promise<{ q?: string }>;
+-};
+-
+-function stringMeta(meta: Record<string, unknown>, key: string) {
+-  const value = meta[key];
+-  return typeof value === "string" ? value : undefined;
+-}
+-
+-export default async function KamerledenPage({ searchParams }: KamerledenPageProps) {
+-  const params = await searchParams;
+-  const query = params?.q?.trim() ?? "";
+-  const members = await getMembersOverview(query);
+-
+-  return (
+-    <main className="page-shell">
+-      <section className="section-heading search-heading">
+-        <div>
+-          <p className="eyebrow">Kamerleden</p>
+-          <h1>Persoonlijke profielen met fractie en bewaarknop.</h1>
+-        </div>
+-        <form className="search-form" action="/kamerleden">
+-          <Search size={18} aria-hidden="true" />
+-          <input name="q" defaultValue={query} placeholder="Zoek Kamerlid op naam" />
+-          <button className="primary-button" type="submit">Zoek</button>
+-        </form>
+-      </section>
+-
+-      <div className="result-count" aria-live="polite">
+-        <UserCircle size={18} aria-hidden="true" />
+-        <strong>{members.items.length}</strong>
+-        <span>{query ? `Kamerleden voor "${query}"` : "Kamerleden"}</span>
+-        <ApiStatusPill apiOk={members.apiOk} />
+-      </div>
+-
+-      <section className="member-grid">
+-        {members.items.map((item) => {
+-          const faction = stringMeta(item.meta, "Fractielabel");
+-          const personId = stringMeta(item.meta, "Id") ?? item.id;
+-          const photoUrl = personResourceUrl(personId);
+-          const initial = item.title.trim().charAt(0).toUpperCase() || "?";
+-
+-          return (
+-            <article className="member-card" key={`${item.kind}-${item.id}`} style={{ borderTopColor: factionColor(faction) }}>
+-              <div className="member-avatar" style={{ backgroundColor: factionColor(faction) }}>
+-                {photoUrl ? <img src={photoUrl} alt="" loading="lazy" /> : null}
+-                <span>{initial}</span>
+-              </div>
+-              <div className="member-body">
+-                <div className="result-meta">
+-                  <span>{faction ?? "Fractie onbekend"}</span>
+-                  <span>{item.status ?? "Kamerlid"}</span>
+-                </div>
+-                <h2>{item.title}</h2>
+-                <p>{item.description}</p>
+-              </div>
+-              <div className="result-actions">
+-                <Link className="secondary-button inline-flex" href={`/kamerleden/${encodeURIComponent(item.id)}`}>
+-                  Open profiel
+-                </Link>
+-                <SaveButton kind="kamerlid" refId={item.id} label={item.title} meta={item.meta} />
+-              </div>
+-            </article>
+-          );
+-        })}
+-      </section>
+-    </main>
+-  );
+-}
++import Link from "next/link";
++import { Search, UserCircle } from "lucide-react";
++import { ApiStatusPill } from "@/components/api-status-pill";
++import { SaveButton } from "@/components/save-button";
++import { factionColor } from "@/lib/factions";
++import { getMembersOverview, personResourceUrl } from "@/lib/tk";
++
++type KamerledenPageProps = {
++  searchParams?: Promise<{ q?: string }>;
++};
++
++function stringMeta(meta: Record<string, unknown>, key: string) {
++  const value = meta[key];
++  return typeof value === "string" ? value : undefined;
++}
++
++export default async function KamerledenPage({ searchParams }: KamerledenPageProps) {
++  const params = await searchParams;
++  const query = params?.q?.trim() ?? "";
++  const members = await getMembersOverview(query);
++
++  return (
++    <main className="page-shell">
++      <section className="section-heading search-heading">
++        <div>
++          <p className="eyebrow">Kamerleden</p>
++          <h1>Persoonlijke profielen met fractie en bewaarknop.</h1>
++        </div>
++        <form className="search-form" action="/kamerleden">
++          <Search size={18} aria-hidden="true" />
++          <input name="q" defaultValue={query} placeholder="Zoek Kamerlid op naam" />
++          <button className="primary-button" type="submit">Zoek</button>
++        </form>
++      </section>
++
++      <div className="result-count" aria-live="polite">
++        <UserCircle size={18} aria-hidden="true" />
++        <strong>{members.items.length}</strong>
++        <span>{query ? `Kamerleden voor "${query}"` : "Kamerleden"}</span>
++        <ApiStatusPill apiOk={members.apiOk} />
++      </div>
++
++      <section className="member-grid">
++        {members.items.map((item) => {
++          const faction = stringMeta(item.meta, "Fractielabel");
++          const personId = stringMeta(item.meta, "Id") ?? item.id;
++          const photoUrl = personResourceUrl(personId);
++          const initial = item.title.trim().charAt(0).toUpperCase() || "?";
++
++          return (
++            <article className="member-card" key={`${item.kind}-${item.id}`} style={{ borderTopColor: factionColor(faction) }}>
++              <div className="member-avatar" style={{ backgroundColor: factionColor(faction) }}>
++                {photoUrl ? <img src={photoUrl} alt="" loading="lazy" /> : null}
++                <span>{initial}</span>
++              </div>
++              <div className="member-body">
++                <div className="result-meta">
++                  <span>{faction ?? "Fractie onbekend"}</span>
++                  <span>{item.status ?? "Kamerlid"}</span>
++                </div>
++                <h2>
++                  <Link className="result-title-link" href={`/kamerleden/${encodeURIComponent(item.id)}`}>
++                    {item.title}
++                  </Link>
++                </h2>
++                <p>{item.description}</p>
++              </div>
++              <div className="result-actions">
++                <Link className="secondary-button inline-flex" href={`/kamerleden/${encodeURIComponent(item.id)}`}>
++                  Open profiel
++                </Link>
++                <SaveButton kind="kamerlid" refId={item.id} label={item.title} meta={item.meta} />
++              </div>
++            </article>
++          );
++        })}
++      </section>
++    </main>
++  );
++}
+diff --git a/components/monitor-result-card.tsx b/components/monitor-result-card.tsx
+--- a/components/monitor-result-card.tsx
++++ b/components/monitor-result-card.tsx
+@@ -1,65 +1,69 @@
+-import Link from "next/link";
+-import { CalendarDays } from "lucide-react";
+-import type { MonitorItem } from "@/lib/tk";
+-import { SaveButton } from "@/components/save-button";
+-
+-type MonitorResultCardProps = {
+-  item: MonitorItem;
+-  compact?: boolean;
+-};
+-
+-function itemHref(item: MonitorItem) {
+-  const id = encodeURIComponent(item.id);
+-
+-  if (item.kind === "dossier" || item.kind === "motie") {
+-    return `/dossiers/${id}`;
+-  }
+-
+-  if (item.kind === "kamerlid") {
+-    return `/kamerleden/${id}`;
+-  }
+-
+-  if (item.kind === "fractie") {
+-    return `/fracties/${id}`;
+-  }
+-
+-  if (item.kind === "kamerbrief") {
+-    return `/kamerbrieven/${id}`;
+-  }
+-
+-  if (item.kind === "stemming") {
+-    return `/stemmingen/${id}`;
+-  }
+-
+-  if (item.kind === "thema") {
+-    return `/search?q=${encodeURIComponent(item.title)}`;
+-  }
+-
+-  return `/agenda/${id}`;
+-}
+-
+-export function MonitorResultCard({ item, compact = false }: MonitorResultCardProps) {
+-  return (
+-    <article className={compact ? "result-card compact" : "result-card"}>
+-      <div className="result-main">
+-        <div className="result-meta">
+-          <span>{item.eyebrow}</span>
+-          <span>
+-            <CalendarDays size={14} aria-hidden="true" />
+-            {item.date}
+-          </span>
+-          {item.status ? <span>{item.status}</span> : null}
+-        </div>
+-        <h3>{item.title}</h3>
+-        {item.description ? <p>{item.description}</p> : null}
+-        {item.matchedOn ? <p className="match-label">Match: {item.matchedOn}</p> : null}
+-      </div>
+-      <div className="result-actions">
+-        <Link className="secondary-button inline-flex" href={itemHref(item)}>
+-          Open
+-        </Link>
+-        <SaveButton kind={item.kind} refId={item.id} label={item.title} meta={item.meta} />
+-      </div>
+-    </article>
+-  );
+-}
++import Link from "next/link";
++import { CalendarDays } from "lucide-react";
++import type { MonitorItem } from "@/lib/tk";
++import { SaveButton } from "@/components/save-button";
++
++type MonitorResultCardProps = {
++  item: MonitorItem;
++  compact?: boolean;
++};
++
++function itemHref(item: MonitorItem) {
++  const id = encodeURIComponent(item.id);
++
++  if (item.kind === "dossier" || item.kind === "motie") {
++    return `/dossiers/${id}`;
++  }
++
++  if (item.kind === "kamerlid") {
++    return `/kamerleden/${id}`;
++  }
++
++  if (item.kind === "fractie") {
++    return `/fracties/${id}`;
++  }
++
++  if (item.kind === "kamerbrief") {
++    return `/kamerbrieven/${id}`;
++  }
++
++  if (item.kind === "stemming") {
++    return `/stemmingen/${id}`;
++  }
++
++  if (item.kind === "thema") {
++    return `/search?q=${encodeURIComponent(item.title)}`;
++  }
++
++  return `/agenda/${id}`;
++}
++
++export function MonitorResultCard({ item, compact = false }: MonitorResultCardProps) {
++  return (
++    <article className={compact ? "result-card compact" : "result-card"}>
++      <div className="result-main">
++        <div className="result-meta">
++          <span>{item.eyebrow}</span>
++          <span>
++            <CalendarDays size={14} aria-hidden="true" />
++            {item.date}
++          </span>
++          {item.status ? <span>{item.status}</span> : null}
++        </div>
++        <h3>
++          <Link className="result-title-link" href={itemHref(item)}>
++            {item.title}
++          </Link>
++        </h3>
++        {item.description ? <p>{item.description}</p> : null}
++        {item.matchedOn ? <p className="match-label">Match: {item.matchedOn}</p> : null}
++      </div>
++      <div className="result-actions">
++        <Link className="secondary-button inline-flex" href={itemHref(item)}>
++          Open
++        </Link>
++        <SaveButton kind={item.kind} refId={item.id} label={item.title} meta={item.meta} />
++      </div>
++    </article>
++  );
++}
+diff --git a/components/vote-card.tsx b/components/vote-card.tsx
+--- a/components/vote-card.tsx
++++ b/components/vote-card.tsx
+@@ -1,47 +1,51 @@
+-import Link from "next/link";
+-import type { VoteSummary } from "@/lib/tk";
+-import { factionColor } from "@/lib/factions";
+-import { SaveButton } from "@/components/save-button";
+-
+-export function VoteCard({ vote }: { vote: VoteSummary }) {
+-  const voorWidth = `${Math.round((vote.voor / vote.total) * 100)}%`;
+-  const tegenWidth = `${Math.round((vote.tegen / vote.total) * 100)}%`;
+-  const onthoudenWidth = `${Math.round((vote.onthouden / vote.total) * 100)}%`;
+-
+-  return (
+-    <article className="vote-card">
+-      <div className="vote-card-head">
+-        <div>
+-          <p className="eyebrow">{vote.result}</p>
+-          <h3>{vote.title}</h3>
+-          <p>{vote.date}</p>
+-        </div>
+-        <div className="vote-totals" aria-label="Stemverhouding">
+-          <strong>{vote.voor}</strong>
+-          <span>voor</span>
+-          <strong>{vote.tegen}</strong>
+-          <span>tegen</span>
+-        </div>
+-      </div>
+-      <div className="vote-bar" aria-hidden="true">
+-        <span className="vote-bar-for" style={{ width: voorWidth }} />
+-        <span className="vote-bar-against" style={{ width: tegenWidth }} />
+-        <span className="vote-bar-abstain" style={{ width: onthoudenWidth }} />
+-      </div>
+-      <div className="vote-lines">
+-        {vote.lines.slice(0, 18).map((line) => (
+-          <span className="vote-chip" key={`${vote.id}-${line.faction}`}>
+-            <i style={{ background: factionColor(line.faction) }} />
+-            {line.faction}: {line.vote}
+-          </span>
+-        ))}
+-      </div>
+-      <div className="result-actions">
+-        <Link className="secondary-button inline-flex" href={`/stemmingen/${encodeURIComponent(vote.id)}`}>
+-          Open stemming
+-        </Link>
+-        <SaveButton kind="stemming" refId={vote.id} label={vote.title} meta={vote.meta} />
+-      </div>
+-    </article>
+-  );
+-}
++import Link from "next/link";
++import type { VoteSummary } from "@/lib/tk";
++import { factionColor } from "@/lib/factions";
++import { SaveButton } from "@/components/save-button";
++
++export function VoteCard({ vote }: { vote: VoteSummary }) {
++  const voorWidth = `${Math.round((vote.voor / vote.total) * 100)}%`;
++  const tegenWidth = `${Math.round((vote.tegen / vote.total) * 100)}%`;
++  const onthoudenWidth = `${Math.round((vote.onthouden / vote.total) * 100)}%`;
++
++  return (
++    <article className="vote-card">
++      <div className="vote-card-head">
++        <div>
++          <p className="eyebrow">{vote.result}</p>
++          <h3>
++            <Link className="result-title-link" href={`/stemmingen/${encodeURIComponent(vote.id)}`}>
++              {vote.title}
++            </Link>
++          </h3>
++          <p>{vote.date}</p>
++        </div>
++        <div className="vote-totals" aria-label="Stemverhouding">
++          <strong>{vote.voor}</strong>
++          <span>voor</span>
++          <strong>{vote.tegen}</strong>
++          <span>tegen</span>
++        </div>
++      </div>
++      <div className="vote-bar" aria-hidden="true">
++        <span className="vote-bar-for" style={{ width: voorWidth }} />
++        <span className="vote-bar-against" style={{ width: tegenWidth }} />
++        <span className="vote-bar-abstain" style={{ width: onthoudenWidth }} />
++      </div>
++      <div className="vote-lines">
++        {vote.lines.slice(0, 18).map((line) => (
++          <span className="vote-chip" key={`${vote.id}-${line.faction}`}>
++            <i style={{ background: factionColor(line.faction) }} />
++            {line.faction}: {line.vote}
++          </span>
++        ))}
++      </div>
++      <div className="result-actions">
++        <Link className="secondary-button inline-flex" href={`/stemmingen/${encodeURIComponent(vote.id)}`}>
++          Open stemming
++        </Link>
++        <SaveButton kind="stemming" refId={vote.id} label={vote.title} meta={vote.meta} />
++      </div>
++    </article>
++  );
++}
