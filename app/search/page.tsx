@@ -17,7 +17,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       <section className="section-heading search-heading">
         <div>
           <p className="eyebrow">Zoeken</p>
-          <h1>Vind dossiers, Kamerleden, moties, stemmingen, Kamerbrieven en debatten.</h1>
+          <h1>Vind dossiers, Kamerleden, moties, amendementen, wetten, stemmingen, Kamerbrieven en debatten.</h1>
         </div>
         <form className="search-form" action="/search">
           <Search size={18} aria-hidden="true" />

@@ -24,7 +24,7 @@ export default async function SavedPage() {
       <section className="section-heading">
         <p className="eyebrow">Persoonlijk</p>
         <h1>Opgeslagen items</h1>
-        <p>Alles wat je bewaart op Politiekemonitor komt hier terecht.</p>
+        <p>Alles wat je bewaart op Kamerkompas komt hier terecht.</p>
       </section>
 
       {savedItems.length === 0 ? (

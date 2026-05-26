@@ -3,8 +3,8 @@ import { SiteHeader } from "@/components/site-header";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Politiekemonitor",
-  description: "Volg Tweede Kamer-activiteiten, dossiers, Kamerleden, moties, stemmingen, Kamerbrieven en debatten."
+  title: "Kamerkompas",
+  description: "Dagdashboard voor Tweede Kamer-agenda, stemmingen, Kamerbrieven, dossiers, Kamerleden en fracties."
 };
 
 export default function RootLayout({

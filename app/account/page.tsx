@@ -20,7 +20,7 @@ export default async function AccountPage() {
     <main className="page-shell">
       <section className="section-heading">
         <p className="eyebrow">Account</p>
-        <h1>Je Politiekemonitor-profiel</h1>
+        <h1>Je Kamerkompas-profiel</h1>
       </section>
       <section className="account-grid">
         <div className="profile-card">

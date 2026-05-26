@@ -1,132 +1,160 @@
-import { Activity, AlertCircle, CalendarDays, Database, ExternalLink, Landmark } from "lucide-react";
-import { SaveButton } from "@/components/save-button";
-import { activityDate, activityId, activityTitle, getRecentActivities, type TkActivity } from "@/lib/tk";
-
-const focusDossiers = [
-  {
-    id: "klimaat-energie",
-    label: "Klimaat en energie",
-    meta: { thema: "energie", bron: "starter" }
-  },
-  {
-    id: "zorg-en-wonen",
-    label: "Zorg en wonen",
-    meta: { thema: "sociaal", bron: "starter" }
-  },
-  {
-    id: "digitalisering-ai",
-    label: "Digitalisering en AI",
-    meta: { thema: "digitalisering", bron: "starter" }
-  }
-];
+import Link from "next/link";
+import { Activity, ArrowRight, Bell, CalendarDays, FileText, Landmark } from "lucide-react";
+import { ApiStatusPill } from "@/components/api-status-pill";
+import { FactionSeatChart } from "@/components/faction-seat-chart";
+import { MonitorResultCard } from "@/components/monitor-result-card";
+import { VoteCard } from "@/components/vote-card";
+import { getKamerkompasOverview, reportResourceUrl } from "@/lib/tk";
 
 export default async function HomePage() {
-  let activities: TkActivity[] = [];
-  let apiError = false;
-
-  try {
-    activities = await getRecentActivities();
-  } catch {
-    apiError = true;
-  }
+  const overview = await getKamerkompasOverview();
+  const activeReport = overview.reports[0];
+  const activeReportUrl = reportResourceUrl(activeReport?.Id);
 
   return (
     <main className="dashboard">
-      <section className="status-band">
+      <section className="status-band kamerkompas-hero">
         <div>
-          <p className="eyebrow">Live monitor</p>
-          <h1>Tweede Kamer in een werkbaar overzicht.</h1>
-          <p>
-            Recente activiteiten, vaste volgdossiers en persoonlijke bookmarks op een plek.
-          </p>
+          <p className="eyebrow">Kamerkompas</p>
+          <h1>Dagdashboard voor de Tweede Kamer.</h1>
+          <p>Agenda, stemmingen, moties, Kamerbrieven, toezeggingen en fracties in een werkbaar overzicht.</p>
         </div>
         <div className="status-metrics" aria-label="Status">
           <div>
-            <Database size={18} aria-hidden="true" />
-            <span>Open Data</span>
-            <strong>{apiError ? "offline" : "live"}</strong>
+            <Activity size={18} aria-hidden="true" />
+            <span>Datastatus</span>
+            <strong>
+              <ApiStatusPill apiOk={overview.apiOk} />
+            </strong>
           </div>
           <div>
             <Landmark size={18} aria-hidden="true" />
             <span>Bron</span>
-            <strong>Tweede Kamer</strong>
+            <strong>Open Data</strong>
           </div>
-          <a href="https://opendata.tweedekamer.nl/" target="_blank" rel="noreferrer">
-            <ExternalLink size={18} aria-hidden="true" />
-            Open Data Portaal
-          </a>
+          <Link href="/search">
+            <ArrowRight size={18} aria-hidden="true" />
+            Zoek door de Kamer
+          </Link>
         </div>
       </section>
 
-      <section className="content-grid">
+      <section className="ticker-band" aria-label="Recente wijzigingen">
+        <strong>Recente wijzigingen</strong>
+        <div>
+          {overview.ticker.slice(0, 5).map((item) => (
+            <span key={`${item.kind}-${item.id}`}>{item.title}</span>
+          ))}
+        </div>
+      </section>
+
+      <section className="content-grid wide">
         <div className="main-column">
           <div className="section-heading compact">
             <div>
-              <p className="eyebrow">Activiteiten</p>
-              <h2>Recent gewijzigd</h2>
+              <p className="eyebrow">Nu in de Kamer</p>
+              <h2>Live-strip</h2>
             </div>
-            <CalendarDays size={22} aria-hidden="true" />
+            <Activity size={22} aria-hidden="true" />
+          </div>
+          <div className="result-list">
+            {overview.now.length === 0 ? (
+              <div className="empty-state small">
+                <p>Er loopt volgens de feed nu geen openbare activiteit.</p>
+              </div>
+            ) : (
+              overview.now.map((item) => <MonitorResultCard compact item={item} key={`${item.kind}-${item.id}`} />)
+            )}
           </div>
 
-          {apiError ? (
-            <div className="warning-panel">
-              <AlertCircle size={20} aria-hidden="true" />
+          {activeReport ? (
+            <section className="zaal-block">
               <div>
-                <h3>Open Data is tijdelijk niet bereikbaar</h3>
-                <p>De app blijft werken; probeer straks opnieuw of deploy met caching in een volgende ronde.</p>
+                <p className="eyebrow">Vers uit de zaal</p>
+                <h2>{activeReport.Soort ?? "Ongecorrigeerd verslag"}</h2>
+                <p>{activeReport.Status ?? "Verslag beschikbaar"} / {activeReport.ContentType ?? "publicatie"}</p>
               </div>
-            </div>
-          ) : activities.length === 0 ? (
-            <div className="empty-state">
-              <h3>Geen recente activiteiten gevonden</h3>
-              <p>De Open Data API gaf een lege lijst terug.</p>
-            </div>
-          ) : (
-            <div className="activity-list">
-              {activities.map((activity) => {
-                const id = activityId(activity);
-                const title = activityTitle(activity);
+              <a className="secondary-button" href={activeReportUrl ?? "/verslag"} target={activeReportUrl ? "_blank" : undefined} rel="noreferrer">
+                <FileText size={18} aria-hidden="true" />
+                Open verslag
+              </a>
+            </section>
+          ) : null}
 
-                return (
-                  <article className="activity-card" key={id}>
-                    <div className="activity-icon">
-                      <Activity size={18} aria-hidden="true" />
-                    </div>
-                    <div className="activity-body">
-                      <div className="activity-meta">
-                        <span>{activity.Soort ?? "Activiteit"}</span>
-                        <span>{activityDate(activity)}</span>
-                      </div>
-                      <h3>{title}</h3>
-                      <p>{activity.Status ?? "Status onbekend"}</p>
-                    </div>
-                    <SaveButton kind="activiteit" refId={id} label={title} meta={activity} />
-                  </article>
-                );
-              })}
+          <div className="section-heading compact stacked">
+            <div>
+              <p className="eyebrow">Stemmingen</p>
+              <h2>Recente uitslagen</h2>
             </div>
-          )}
+            <Link className="text-link" href="/stemmingen">Alles</Link>
+          </div>
+          <div className="result-list">
+            {overview.votes.map((vote) => <VoteCard vote={vote} key={vote.id} />)}
+          </div>
         </div>
 
         <aside className="side-column">
           <div className="section-heading compact">
             <div>
-              <p className="eyebrow">Volgen</p>
-              <h2>Focusdossiers</h2>
+              <p className="eyebrow">Weekagenda</p>
+              <h2>Komende dagen</h2>
             </div>
+            <CalendarDays size={22} aria-hidden="true" />
           </div>
-          <div className="dossier-list">
-            {focusDossiers.map((dossier) => (
-              <article className="dossier-card" key={dossier.id}>
-                <div>
-                  <h3>{dossier.label}</h3>
-                  <p>Bewaar dit dossier om het later terug te vinden.</p>
-                </div>
-                <SaveButton kind="dossier" refId={dossier.id} label={dossier.label} meta={dossier.meta} />
-              </article>
+          <div className="result-list">
+            {overview.weekAgenda.slice(0, 6).map((item) => (
+              <MonitorResultCard compact item={item} key={`${item.kind}-${item.id}`} />
             ))}
           </div>
+
+          <div className="section-heading compact stacked">
+            <div>
+              <p className="eyebrow">Zetelverdeling</p>
+              <h2>Fracties</h2>
+            </div>
+            <Link className="text-link" href="/fracties">Details</Link>
+          </div>
+          <FactionSeatChart factions={overview.factions} />
         </aside>
+      </section>
+
+      <section className="overview-grid">
+        <div>
+          <div className="section-heading compact">
+            <div>
+              <p className="eyebrow">Nieuw</p>
+              <h2>Moties en amendementen</h2>
+            </div>
+            <Link className="text-link" href="/dossiers">Dossiers</Link>
+          </div>
+          <div className="result-list">
+            {overview.motions.map((item) => <MonitorResultCard compact item={item} key={`${item.kind}-${item.id}`} />)}
+          </div>
+        </div>
+        <div>
+          <div className="section-heading compact">
+            <div>
+              <p className="eyebrow">Kamerbrieven</p>
+              <h2>Recent ontvangen</h2>
+            </div>
+            <Link className="text-link" href="/kamerbrieven">Alle brieven</Link>
+          </div>
+          <div className="result-list">
+            {overview.letters.map((item) => <MonitorResultCard compact item={item} key={`${item.kind}-${item.id}`} />)}
+          </div>
+        </div>
+        <div>
+          <div className="section-heading compact">
+            <div>
+              <p className="eyebrow">Toezeggingen</p>
+              <h2>Nieuwe toezeggingen</h2>
+            </div>
+            <Bell size={20} aria-hidden="true" />
+          </div>
+          <div className="result-list">
+            {overview.pledges.map((item) => <MonitorResultCard compact item={item} key={`${item.kind}-${item.id}`} />)}
+          </div>
+        </div>
       </section>
     </main>
   );
