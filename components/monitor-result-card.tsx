@@ -50,7 +50,11 @@ export function MonitorResultCard({ item, compact = false }: MonitorResultCardPr
           </span>
           {item.status ? <span>{item.status}</span> : null}
         </div>
-        <h3>{item.title}</h3>
+        <h3>
+          <Link className="result-title-link" href={itemHref(item)}>
+            {item.title}
+          </Link>
+        </h3>
         {item.description ? <p>{item.description}</p> : null}
         {item.matchedOn ? <p className="match-label">Match: {item.matchedOn}</p> : null}
       </div>

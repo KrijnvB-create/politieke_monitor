@@ -39,7 +39,11 @@ export default async function FractiesPage() {
                 <div className="faction-swatch" style={{ backgroundColor: factionColor(label) }} aria-hidden="true" />
                 <div>
                   <p className="eyebrow">{faction.AantalZetels ?? 0} zetels</p>
-                  <h2>{label}</h2>
+                  <h2>
+                    <Link className="result-title-link" href={`/fracties/${encodeURIComponent(id)}`}>
+                      {label}
+                    </Link>
+                  </h2>
                   {faction.NaamNL && faction.NaamNL !== label ? <p>{faction.NaamNL}</p> : null}
                 </div>
                 <div className="result-actions">

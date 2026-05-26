@@ -13,7 +13,11 @@ export function VoteCard({ vote }: { vote: VoteSummary }) {
       <div className="vote-card-head">
         <div>
           <p className="eyebrow">{vote.result}</p>
-          <h3>{vote.title}</h3>
+          <h3>
+            <Link className="result-title-link" href={`/stemmingen/${encodeURIComponent(vote.id)}`}>
+              {vote.title}
+            </Link>
+          </h3>
           <p>{vote.date}</p>
         </div>
         <div className="vote-totals" aria-label="Stemverhouding">

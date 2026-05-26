@@ -51,7 +51,11 @@ export default async function KamerbrievenPage({ searchParams }: KamerbrievenPag
                   <span>{item.date}</span>
                   {item.status ? <span>{item.status}</span> : null}
                 </div>
-                <h3>{item.title}</h3>
+                <h3>
+                  <Link className="result-title-link" href={`/kamerbrieven/${encodeURIComponent(item.id)}`}>
+                    {item.title}
+                  </Link>
+                </h3>
                 <p>{item.description}</p>
                 <div className="letter-actions">
                   <Link className="secondary-button inline-flex" href={`/kamerbrieven/${encodeURIComponent(item.id)}`}>

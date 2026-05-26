@@ -397,6 +397,19 @@ p {
   margin-bottom: 6px;
 }
 
+.result-title-link {
+  color: var(--navy);
+  text-decoration: underline;
+  text-decoration-color: rgba(23, 50, 77, 0.28);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+
+.result-title-link:hover {
+  color: var(--red);
+  text-decoration-color: currentColor;
+}
+
 .result-card p {
   margin-bottom: 0;
 }

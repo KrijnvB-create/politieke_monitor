@@ -58,7 +58,11 @@ export default async function KamerledenPage({ searchParams }: KamerledenPagePro
                   <span>{faction ?? "Fractie onbekend"}</span>
                   <span>{item.status ?? "Kamerlid"}</span>
                 </div>
-                <h2>{item.title}</h2>
+                <h2>
+                  <Link className="result-title-link" href={`/kamerleden/${encodeURIComponent(item.id)}`}>
+                    {item.title}
+                  </Link>
+                </h2>
                 <p>{item.description}</p>
               </div>
               <div className="result-actions">
