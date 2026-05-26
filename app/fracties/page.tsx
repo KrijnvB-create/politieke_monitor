@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Landmark } from "lucide-react";
 import { ApiStatusPill } from "@/components/api-status-pill";
 import { FactionSeatChart } from "@/components/faction-seat-chart";
@@ -38,10 +39,19 @@ export default async function FractiesPage() {
                 <div className="faction-swatch" style={{ backgroundColor: factionColor(label) }} aria-hidden="true" />
                 <div>
                   <p className="eyebrow">{faction.AantalZetels ?? 0} zetels</p>
-                  <h2>{label}</h2>
+                  <h2>
+                    <Link className="result-title-link" href={`/fracties/${encodeURIComponent(id)}`}>
+                      {label}
+                    </Link>
+                  </h2>
                   {faction.NaamNL && faction.NaamNL !== label ? <p>{faction.NaamNL}</p> : null}
                 </div>
-                <SaveButton kind="fractie" refId={id} label={label} meta={{ ...faction }} />
+                <div className="result-actions">
+                  <Link className="secondary-button inline-flex" href={`/fracties/${encodeURIComponent(id)}`}>
+                    Open fractie
+                  </Link>
+                  <SaveButton kind="fractie" refId={id} label={label} meta={{ ...faction }} />
+                </div>
               </article>
             );
           })}
