@@ -60,9 +60,9 @@ export default async function DashboardPage() {
             <Bookmark size={18} aria-hidden="true" />
             Volgen
           </Link>
-          <Link className="primary-button" href="/debatten">
+          <Link className="primary-button" href="/agenda">
             <Activity size={18} aria-hidden="true" />
-            Debatten
+            Agenda
           </Link>
         </div>
       </section>

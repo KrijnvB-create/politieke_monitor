@@ -1,12 +1,13 @@
-# Politiekemonitor
+# Kamerkompas
 
-Online-ready starter voor politiekemonitor.com.
+Dashboard voor politiekemonitor.com rond Tweede Kamer-agenda, stemmingen, Kamerbrieven, dossiers, Kamerleden en fracties.
 
 ## Wat zit erin
 
 - Next.js App Router met TypeScript
-- Publiek dashboard met recente Tweede Kamer-activiteiten
-- Zoekpagina voor dossiers, Kamerleden, moties, stemmingen, Kamerbrieven en debatten
+- Dagdashboard met "Nu in de Kamer", recente wijzigingen, weekagenda, stemmingen, moties, Kamerbrieven, toezeggingen en zetelverdeling
+- Hoofdsecties voor Stemmingen, Agenda, Kamerbrieven, Dossiers, Kamerleden, Fracties, Verslag en Zoeken
+- Zoekpagina voor dossiers, Kamerleden, moties, amendementen, wetten, stemmingen, Kamerbrieven en debatten
 - Persoonlijk dashboard met recente ontwikkelingen rond gevolgde thema's, Kamerleden en debatten
 - Supabase login via Google en GitHub
 - `profiles` en `saved_items` tabellen met Row Level Security

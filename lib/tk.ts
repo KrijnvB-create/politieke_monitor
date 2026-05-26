@@ -17,9 +17,12 @@ export type TkActivity = {
   Titel?: string;
   Status?: string;
   Datum?: string | null;
+  Aanvangstijd?: string | null;
+  Eindtijd?: string | null;
   GewijzigdOp?: string | null;
   Verwijderd?: boolean;
   Locatie?: string | null;
+  Voortouwnaam?: string | null;
   Vergaderjaar?: string | null;
 };
 
@@ -217,7 +220,7 @@ export function activityTitle(activity: TkActivity) {
 }
 
 export function activityDate(activity: TkActivity) {
-  return formatTkDate(activity.Datum ?? activity.GewijzigdOp);
+  return formatTkDate(activity.Aanvangstijd ?? activity.Datum ?? activity.GewijzigdOp);
 }
 
 function personName(person: TkPerson) {
@@ -256,6 +259,21 @@ function personToItem(person: TkPerson): MonitorItem {
     date: formatTkDate(person.GewijzigdOp),
     status: person.Functie ?? undefined,
     meta: asRecord(person)
+  };
+}
+
+function factionToItem(faction: TkFaction): MonitorItem {
+  const title = faction.Afkorting ?? faction.NaamNL ?? "Fractie";
+
+  return {
+    kind: "fractie",
+    id: faction.Id ?? title,
+    title,
+    eyebrow: "Fractie",
+    description: [faction.NaamNL, faction.AantalZetels ? `${faction.AantalZetels} zetels` : null].filter(Boolean).join(" / "),
+    date: formatTkDate(faction.GewijzigdOp),
+    status: faction.AantalZetels ? `${faction.AantalZetels} zetels` : undefined,
+    meta: asRecord(faction)
   };
 }
 
@@ -313,7 +331,7 @@ function activityToItem(activity: TkActivity, kind: "activiteit" | "debat" = "ac
     id: activityId(activity),
     title,
     eyebrow: activity.Soort ?? (kind === "debat" ? "Debat" : "Activiteit"),
-    description: [activity.Status, activity.Locatie, activity.Vergaderjaar].filter(Boolean).join(" / "),
+    description: [activity.Status, activity.Locatie, activity.Voortouwnaam, activity.Vergaderjaar].filter(Boolean).join(" / "),
     date: activityDate(activity),
     status: activity.Status ?? undefined,
     meta: asRecord(activity)
@@ -355,6 +373,16 @@ async function searchMembers(query?: string, top = 6) {
   return rows.map(personToItem);
 }
 
+async function searchFactions(query?: string, top = 10) {
+  const rows = await tkFetch<TkFaction>("Fractie", {
+    $filter: withQuery("Verwijderd eq false and DatumInactief eq null", ["Afkorting", "NaamNL"], query),
+    $orderby: "AantalZetels desc",
+    $top: top
+  });
+
+  return rows.map(factionToItem);
+}
+
 async function searchMotions(query?: string, top = 6) {
   const rows = await tkFetch<TkCase>("Zaak", {
     $filter: withQuery("Verwijderd eq false and Soort eq 'Motie'", ["Onderwerp", "Titel", "Nummer"], query),
@@ -363,6 +391,16 @@ async function searchMotions(query?: string, top = 6) {
   });
 
   return rows.map((item) => caseToItem(item, "motie"));
+}
+
+async function searchCases(query?: string, top = 10) {
+  const rows = await tkFetch<TkCase>("Zaak", {
+    $filter: withQuery("Verwijderd eq false and (Soort eq 'Motie' or Soort eq 'Amendement' or contains(Soort,'Wet'))", ["Onderwerp", "Titel", "Nummer"], query),
+    $orderby: "GewijzigdOp desc",
+    $top: top
+  });
+
+  return rows.map((item) => caseToItem(item, item.Soort === "Motie" ? "motie" : "dossier"));
 }
 
 async function searchLetters(query?: string, top = 6) {
@@ -388,12 +426,23 @@ async function searchVotes(query?: string, top = 6) {
 
 async function searchDebateActivities(query?: string, top = 6) {
   const rows = await tkFetch<TkActivity>("Activiteit", {
-    $filter: withQuery("Verwijderd eq false and contains(Soort,'debat')", ["Onderwerp", "Soort"], query),
+    $filter: withQuery("Verwijderd eq false and (contains(Soort,'debat') or contains(Soort,'Debat'))", ["Onderwerp", "Soort"], query),
     $orderby: "GewijzigdOp desc",
     $top: top
   });
 
   return rows.map((activity) => activityToItem(activity, "debat"));
+}
+
+async function searchAgendaActivities(query?: string, top = 18) {
+  const window = dateWindow(30);
+  const rows = await tkFetch<TkActivity>("Activiteit", {
+    $filter: withQuery(`Verwijderd eq false and Aanvangstijd ge ${window.start}`, ["Onderwerp", "Soort", "Locatie", "Voortouwnaam"], query),
+    $orderby: "Aanvangstijd asc",
+    $top: top
+  });
+
+  return rows.map((activity) => activityToItem(activity, activity.Soort?.toLowerCase().includes("debat") ? "debat" : "activiteit"));
 }
 
 async function searchPastDebates(query?: string, top = 8) {
@@ -422,10 +471,11 @@ function themeItem(query: string): MonitorItem {
 
 export async function searchMonitor(query?: string): Promise<SearchSection[]> {
   const term = query?.trim() ?? "";
-  const [dossiers, members, motions, letters, debates, votes] = await Promise.all([
+  const [dossiers, members, factions, cases, letters, debates, votes] = await Promise.all([
     safeList(searchDossiers(term)),
     safeList(searchMembers(term)),
-    safeList(searchMotions(term)),
+    safeList(searchFactions(term)),
+    safeList(searchCases(term)),
     safeList(searchLetters(term)),
     safeList(searchDebateActivities(term)),
     safeList(searchVotes(term))
@@ -435,7 +485,8 @@ export async function searchMonitor(query?: string): Promise<SearchSection[]> {
     ...(term ? [{ id: "thema", title: "Thema volgen", items: [themeItem(term)] }] : []),
     { id: "dossiers", title: "Dossiers", items: dossiers },
     { id: "kamerleden", title: "Kamerleden", items: members },
-    { id: "moties", title: "Moties", items: motions },
+    { id: "fracties", title: "Fracties", items: factions },
+    { id: "zaken", title: "Moties, amendementen en wetten", items: cases },
     { id: "kamerbrieven", title: "Kamerbrieven", items: letters },
     { id: "debatten", title: "Debatten", items: debates },
     { id: "stemmingen", title: "Stemmingen", items: votes }
@@ -511,4 +562,377 @@ export async function getDashboardDevelopments(savedItems: SavedItemRecord[]): P
     developments: dedupeItems(matchedGroups.flat()).slice(0, 14),
     votes
   };
+}
+
+export type TkFaction = {
+  Id?: string;
+  Afkorting?: string | null;
+  NaamNL?: string | null;
+  AantalZetels?: number | null;
+  AantalStemmen?: number | null;
+  DatumActief?: string | null;
+  DatumInactief?: string | null;
+  GewijzigdOp?: string | null;
+};
+
+export type TkPledge = {
+  Id?: string;
+  Nummer?: string | null;
+  Functie?: string | null;
+  Voornaam?: string | null;
+  Achternaam?: string | null;
+  Status?: string | null;
+  Ministerie?: string | null;
+  Tekst?: string | null;
+  GewijzigdOp?: string | null;
+};
+
+export type TkReport = {
+  Id?: string;
+  Soort?: string | null;
+  Status?: string | null;
+  ContentType?: string | null;
+  GewijzigdOp?: string | null;
+  Vergadering_Id?: string | null;
+};
+
+export type TkDecision = {
+  Id?: string;
+  BesluitSoort?: string | null;
+  BesluitTekst?: string | null;
+  StemmingsSoort?: string | null;
+  Status?: string | null;
+  GewijzigdOp?: string | null;
+  Stemming?: TkVote[];
+  Zaak?: TkCase[];
+};
+
+export type VoteLine = {
+  faction: string;
+  vote: string;
+  seats: number;
+};
+
+export type VoteSummary = {
+  id: string;
+  title: string;
+  result: string;
+  date: string;
+  voor: number;
+  tegen: number;
+  onthouden: number;
+  total: number;
+  lines: VoteLine[];
+  meta: UnknownRecord;
+};
+
+export type DataBlock<T> = {
+  items: T[];
+  apiOk: boolean;
+};
+
+export type KamerkompasOverview = {
+  apiOk: boolean;
+  now: MonitorItem[];
+  ticker: MonitorItem[];
+  weekAgenda: MonitorItem[];
+  votes: VoteSummary[];
+  motions: MonitorItem[];
+  letters: MonitorItem[];
+  pledges: MonitorItem[];
+  factions: TkFaction[];
+  reports: TkReport[];
+};
+
+const sampleActivity: TkActivity = {
+  Id: "sample-activity",
+  Soort: "Plenair debat",
+  Onderwerp: "Voorbeelddebat over actuele politieke ontwikkelingen",
+  Status: "Gepland",
+  Locatie: "Plenaire zaal",
+  Vergaderjaar: "Voorbeelddata",
+  GewijzigdOp: new Date().toISOString()
+};
+
+const sampleDocument: TkDocument = {
+  Id: "sample-letter",
+  Soort: "Brief regering",
+  DocumentNummer: "SAMPLE-1",
+  Onderwerp: "Voorbeeldbrief regering",
+  Titel: "Voorbeelddata",
+  GewijzigdOp: new Date().toISOString()
+};
+
+const sampleCase: TkCase = {
+  Id: "sample-motion",
+  Nummer: "SAMPLE-2",
+  Soort: "Motie",
+  Onderwerp: "Voorbeeldmotie over parlementaire monitoring",
+  Status: "Vrijgegeven",
+  GewijzigdOp: new Date().toISOString()
+};
+
+const sampleFaction: TkFaction = {
+  Id: "sample-faction",
+  Afkorting: "TK",
+  NaamNL: "Tweede Kamer",
+  AantalZetels: 150
+};
+
+const samplePledge: TkPledge = {
+  Id: "sample-pledge",
+  Nummer: "TZ-SAMPLE",
+  Functie: "Minister",
+  Status: "Openstaand",
+  Ministerie: "Voorbeeld",
+  Tekst: "Voorbeeldtoezegging wanneer de Tweede Kamer API niet bereikbaar is.",
+  GewijzigdOp: new Date().toISOString()
+};
+
+const sampleReport: TkReport = {
+  Soort: "Tussenpublicatie",
+  Status: "Ongecorrigeerd",
+  GewijzigdOp: new Date().toISOString()
+};
+
+async function block<T>(promise: Promise<T[]>, fallback: T[] = []): Promise<DataBlock<T>> {
+  try {
+    return { items: await promise, apiOk: true };
+  } catch {
+    return { items: fallback, apiOk: false };
+  }
+}
+
+function dateWindow(daysAhead: number) {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + daysAhead);
+
+  return {
+    start: start.toISOString(),
+    end: end.toISOString()
+  };
+}
+
+function documentResourceUrl(id?: string | null) {
+  return id ? `https://gegevensmagazijn.tweedekamer.nl/SyncFeed/2.0/Resources/${id}` : undefined;
+}
+
+function reportResourceUrl(id?: string | null) {
+  return id ? `https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0/Verslag(${id})/Resource` : undefined;
+}
+
+function pledgeToItem(pledge: TkPledge): MonitorItem {
+  const actor = [pledge.Functie, pledge.Voornaam, pledge.Achternaam].filter(Boolean).join(" ");
+
+  return {
+    kind: "activiteit",
+    id: pledge.Id ?? pledge.Nummer ?? pledge.Tekst ?? "toezegging",
+    title: pledge.Tekst ?? "Toezegging",
+    eyebrow: pledge.Nummer ?? "Toezegging",
+    description: [actor, pledge.Ministerie, pledge.Status].filter(Boolean).join(" / "),
+    date: formatTkDate(pledge.GewijzigdOp),
+    status: pledge.Status ?? undefined,
+    meta: asRecord(pledge)
+  };
+}
+
+function reportToItem(report: TkReport): MonitorItem {
+  return {
+    kind: "debat",
+    id: report.Id ?? "verslag",
+    title: `${report.Soort ?? "Verslag"} - ${report.Status ?? "status onbekend"}`,
+    eyebrow: "Verslag",
+    description: reportResourceUrl(report.Id) ?? "Ongecorrigeerde publicatie",
+    date: formatTkDate(report.GewijzigdOp),
+    status: report.Status ?? undefined,
+    meta: asRecord(report)
+  };
+}
+
+function decisionToVoteSummary(decision: TkDecision): VoteSummary {
+  const lines = (decision.Stemming ?? []).map((vote) => ({
+    faction: vote.ActorFractie ?? vote.ActorNaam ?? "Onbekend",
+    vote: vote.Soort ?? "Onbekend",
+    seats: vote.FractieGrootte ?? 0
+  }));
+  const totalFor = lines.filter((line) => line.vote === "Voor").reduce((sum, line) => sum + line.seats, 0);
+  const totalAgainst = lines.filter((line) => line.vote === "Tegen").reduce((sum, line) => sum + line.seats, 0);
+  const totalAbstain = lines.filter((line) => line.vote === "Onthouden").reduce((sum, line) => sum + line.seats, 0);
+  const zaak = decision.Zaak?.[0];
+
+  return {
+    id: decision.Id ?? decision.BesluitTekst ?? "stemming",
+    title: zaak?.Onderwerp ?? decision.BesluitTekst ?? decision.BesluitSoort ?? "Stemming",
+    result: decision.BesluitSoort ?? decision.Status ?? "Uitslag onbekend",
+    date: formatTkDate(decision.GewijzigdOp),
+    voor: totalFor,
+    tegen: totalAgainst,
+    onthouden: totalAbstain,
+    total: Math.max(totalFor + totalAgainst + totalAbstain, 1),
+    lines,
+    meta: asRecord(decision)
+  };
+}
+
+export function personResourceUrl(id?: string | null) {
+  return id ? `${TK_API_BASE}/Persoon/${id}/resource` : undefined;
+}
+
+export function factionResourceUrl(id?: string | null) {
+  return id ? `https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0/Fractie(${id})/Resource` : undefined;
+}
+
+export { documentResourceUrl, reportResourceUrl };
+
+export async function getNowInKamer() {
+  const now = new Date().toISOString();
+  return tkFetch<TkActivity>("Activiteit", {
+    $filter: `Verwijderd eq false and Aanvangstijd le ${now} and Eindtijd ge ${now}`,
+    $orderby: "Aanvangstijd asc",
+    $top: 5
+  });
+}
+
+export async function getWeekAgenda() {
+  const window = dateWindow(7);
+  return tkFetch<TkActivity>("Activiteit", {
+    $filter: `Verwijderd eq false and Aanvangstijd ge ${window.start} and Aanvangstijd le ${window.end}`,
+    $orderby: "Aanvangstijd asc",
+    $top: 12
+  });
+}
+
+export async function getRecentDecisions(top = 8) {
+  const rows = await tkFetch<TkDecision>("Besluit", {
+    $filter: "Verwijderd eq false and (BesluitSoort eq 'Stemmen - aangenomen' or BesluitSoort eq 'Stemmen - verworpen')",
+    $expand: "Zaak,Stemming",
+    $orderby: "GewijzigdOp desc",
+    $top: top
+  });
+
+  return rows.map(decisionToVoteSummary);
+}
+
+export async function getRecentLetters(top = 8) {
+  return searchLetters(undefined, top);
+}
+
+export async function getRecentMotions(top = 8) {
+  return searchMotions(undefined, top);
+}
+
+export async function getRecentDossiers(top = 12) {
+  return searchDossiers(undefined, top);
+}
+
+export async function getMembers(top = 30) {
+  return searchMembers(undefined, top);
+}
+
+export async function getFactions(top = 30) {
+  return tkFetch<TkFaction>("Fractie", {
+    $filter: "Verwijderd eq false and DatumInactief eq null",
+    $orderby: "AantalZetels desc",
+    $top: top
+  });
+}
+
+export async function getRecentPledges(top = 6) {
+  const rows = await tkFetch<TkPledge>("Toezegging", {
+    $filter: "Verwijderd eq false",
+    $orderby: "GewijzigdOp desc",
+    $top: top
+  });
+
+  return rows.map(pledgeToItem);
+}
+
+export async function getRecentReports(top = 5) {
+  return tkFetch<TkReport>("Verslag", {
+    $filter: "Verwijderd eq false",
+    $orderby: "GewijzigdOp desc",
+    $top: top
+  });
+}
+
+export async function getRecentReportsAsItems(top = 5) {
+  const rows = await getRecentReports(top);
+  return rows.map(reportToItem);
+}
+
+export async function getAgendaOverview(query?: string) {
+  const [planned, past] = await Promise.all([
+    block(searchAgendaActivities(query, 18), [activityToItem(sampleActivity, "debat")]),
+    block(searchPastDebates(query, 12), [])
+  ]);
+
+  return {
+    apiOk: planned.apiOk && past.apiOk,
+    planned: planned.items,
+    past: past.items
+  };
+}
+
+export async function getKamerkompasOverview(): Promise<KamerkompasOverview> {
+  const [now, ticker, weekAgenda, votes, motions, letters, pledges, factions, reports] = await Promise.all([
+    block(getNowInKamer().then((items) => items.map((item) => activityToItem(item, "activiteit"))), [activityToItem(sampleActivity)]),
+    block(getRecentActivities().then((items) => items.map((item) => activityToItem(item))), [activityToItem(sampleActivity)]),
+    block(getWeekAgenda().then((items) => items.map((item) => activityToItem(item))), [activityToItem(sampleActivity)]),
+    block(getRecentDecisions(5), [decisionToVoteSummary({ Id: "sample-vote", BesluitSoort: "Voorbeelddata", BesluitTekst: "Voorbeeldstemming", Stemming: [] })]),
+    block(getRecentMotions(5), [caseToItem(sampleCase, "motie")]),
+    block(getRecentLetters(5), [documentToItem(sampleDocument)]),
+    block(getRecentPledges(4), [pledgeToItem(samplePledge)]),
+    block(getFactions(20), [sampleFaction]),
+    block(getRecentReports(2), [sampleReport])
+  ]);
+
+  return {
+    apiOk: [now, ticker, weekAgenda, votes, motions, letters, pledges, factions, reports].every((item) => item.apiOk),
+    now: now.items,
+    ticker: ticker.items,
+    weekAgenda: weekAgenda.items,
+    votes: votes.items,
+    motions: motions.items,
+    letters: letters.items,
+    pledges: pledges.items,
+    factions: factions.items,
+    reports: reports.items
+  };
+}
+
+export async function getLettersOverview(query?: string) {
+  return block(searchLetters(query, 20), [documentToItem(sampleDocument)]);
+}
+
+export async function getDossiersOverview(query?: string) {
+  const [dossiers, motions] = await Promise.all([
+    block(searchDossiers(query, 14), [dossierToItem({ Id: "sample-dossier", Titel: "Voorbeelddossier", GewijzigdOp: new Date().toISOString() })]),
+    block(searchCases(query, 12), [caseToItem(sampleCase, "motie")])
+  ]);
+
+  return {
+    apiOk: dossiers.apiOk && motions.apiOk,
+    dossiers: dossiers.items,
+    motions: motions.items
+  };
+}
+
+export async function getMembersOverview(query?: string) {
+  return block(searchMembers(query, 40), [personToItem({ Id: "sample-member", Roepnaam: "Voorbeeld", Achternaam: "Kamerlid", Functie: "Tweede Kamerlid" })]);
+}
+
+export async function getFactionsOverview() {
+  return block(getFactions(30), [sampleFaction]);
+}
+
+export async function getVotesOverview() {
+  return block(getRecentDecisions(18), [
+    decisionToVoteSummary({ Id: "sample-vote", BesluitSoort: "Voorbeelddata", BesluitTekst: "Voorbeeldstemming", Stemming: [] })
+  ]);
+}
+
+export async function getReportsOverview() {
+  return block(getRecentReports(14), [sampleReport]);
 }
