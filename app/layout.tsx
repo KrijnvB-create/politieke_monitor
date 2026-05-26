@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Politiekemonitor",
-  description: "Volg Tweede Kamer-activiteiten, dossiers en persoonlijke opgeslagen items."
+  description: "Volg Tweede Kamer-activiteiten, dossiers, Kamerleden, moties, stemmingen, Kamerbrieven en debatten."
 };
 
 export default function RootLayout({

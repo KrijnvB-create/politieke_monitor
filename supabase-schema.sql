@@ -55,13 +55,28 @@ create trigger on_auth_user_created
 create table if not exists public.saved_items (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  kind text not null check (kind in ('dossier','kamerlid','fractie','motie','vergadering','activiteit')),
+  kind text not null,
   ref_id text not null,
   label text,
   meta jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   unique (user_id, kind, ref_id)
 );
+
+alter table public.saved_items drop constraint if exists saved_items_kind_check;
+alter table public.saved_items add constraint saved_items_kind_check
+  check (kind in (
+    'thema',
+    'dossier',
+    'kamerlid',
+    'fractie',
+    'motie',
+    'stemming',
+    'vergadering',
+    'activiteit',
+    'kamerbrief',
+    'debat'
+  ));
 
 create index if not exists saved_items_user_created
   on public.saved_items (user_id, created_at desc);
