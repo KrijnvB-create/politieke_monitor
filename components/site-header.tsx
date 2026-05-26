@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bookmark, Compass, UserCircle } from "lucide-react";
+import { Bookmark, CalendarRange, Compass, LayoutDashboard, Search, UserCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { SignOutButton } from "@/components/sign-out-button";
 
@@ -25,6 +25,18 @@ export async function SiteHeader() {
       </Link>
       <nav className="main-nav" aria-label="Hoofdnavigatie">
         <Link href="/">Monitor</Link>
+        <Link href="/search">
+          <Search size={16} aria-hidden="true" />
+          Zoeken
+        </Link>
+        <Link href="/debatten">
+          <CalendarRange size={16} aria-hidden="true" />
+          Debatten
+        </Link>
+        <Link href="/dashboard">
+          <LayoutDashboard size={16} aria-hidden="true" />
+          Dashboard
+        </Link>
         <Link href="/saved">
           <Bookmark size={16} aria-hidden="true" />
           Opgeslagen

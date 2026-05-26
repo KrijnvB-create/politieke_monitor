@@ -2,10 +2,11 @@
 
 import { Bookmark, BookmarkCheck } from "lucide-react";
 import { useEffect, useState } from "react";
+import type { SavedItemKind } from "@/lib/saved-items";
 import { createClient } from "@/lib/supabase/client";
 
 type SaveButtonProps = {
-  kind: "dossier" | "kamerlid" | "fractie" | "motie" | "vergadering" | "activiteit";
+  kind: SavedItemKind;
   refId: string;
   label: string;
   meta?: Record<string, unknown>;
@@ -69,13 +70,19 @@ export function SaveButton({ kind, refId, label, meta = {} }: SaveButtonProps) {
         .eq("ref_id", refId);
       setIsSaved(false);
     } else {
-      await supabase.from("saved_items").insert({
+      const { error } = await supabase.from("saved_items").insert({
         user_id: user.id,
         kind,
         ref_id: refId,
         label,
         meta
       });
+
+      if (error && error.code !== "23505") {
+        setIsBusy(false);
+        return;
+      }
+
       setIsSaved(true);
       setIsSignedIn(true);
     }

@@ -6,6 +6,8 @@ Online-ready starter voor politiekemonitor.com.
 
 - Next.js App Router met TypeScript
 - Publiek dashboard met recente Tweede Kamer-activiteiten
+- Zoekpagina voor dossiers, Kamerleden, moties, stemmingen, Kamerbrieven en debatten
+- Persoonlijk dashboard met recente ontwikkelingen rond gevolgde thema's, Kamerleden en debatten
 - Supabase login via Google en GitHub
 - `profiles` en `saved_items` tabellen met Row Level Security
 - Bewaar-knoppen en een persoonlijke opgeslagen-pagina

@@ -1,15 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { savedKindLabel, type SavedItemRecord } from "@/lib/saved-items";
 import { createClient } from "@/lib/supabase/server";
-
-type SavedItem = {
-  id: string;
-  kind: string;
-  ref_id: string;
-  label: string | null;
-  meta: Record<string, unknown> | null;
-  created_at: string;
-};
 
 export default async function SavedPage() {
   const supabase = await createClient();
@@ -25,7 +17,7 @@ export default async function SavedPage() {
     .eq("user_id", userData.user.id)
     .order("created_at", { ascending: false });
 
-  const savedItems = (items ?? []) as SavedItem[];
+  const savedItems = (items ?? []) as SavedItemRecord[];
 
   return (
     <main className="page-shell">
@@ -48,7 +40,7 @@ export default async function SavedPage() {
           {savedItems.map((item) => (
             <article className="saved-row" key={item.id}>
               <div>
-                <p className="saved-kind">{item.kind}</p>
+                <p className="saved-kind">{savedKindLabel(item.kind)}</p>
                 <h2>{item.label ?? item.ref_id}</h2>
                 <p>{new Date(item.created_at).toLocaleString("nl-NL")}</p>
               </div>
