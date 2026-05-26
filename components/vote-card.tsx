@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { VoteSummary } from "@/lib/tk";
 import { factionColor } from "@/lib/factions";
 import { SaveButton } from "@/components/save-button";
@@ -35,7 +36,12 @@ export function VoteCard({ vote }: { vote: VoteSummary }) {
           </span>
         ))}
       </div>
-      <SaveButton kind="stemming" refId={vote.id} label={vote.title} meta={vote.meta} />
+      <div className="result-actions">
+        <Link className="secondary-button inline-flex" href={`/stemmingen/${encodeURIComponent(vote.id)}`}>
+          Open stemming
+        </Link>
+        <SaveButton kind="stemming" refId={vote.id} label={vote.title} meta={vote.meta} />
+      </div>
     </article>
   );
 }

@@ -786,6 +786,82 @@ export function factionResourceUrl(id?: string | null) {
 
 export { documentResourceUrl, reportResourceUrl };
 
+function odataId(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+    ? value
+    : odataString(value);
+}
+
+async function tkOne<T>(entity: string, id: string, params: Record<string, string | number | undefined> = {}) {
+  const rows = await tkFetch<T>(entity, {
+    $filter: `Id eq ${odataId(id)}`,
+    $top: 1,
+    ...params
+  });
+
+  return rows[0] ?? null;
+}
+
+async function safeOne<T>(promise: Promise<T | null>) {
+  try {
+    return await promise;
+  } catch {
+    return null;
+  }
+}
+
+export async function getAgendaItemById(id: string) {
+  const [activity, meeting] = await Promise.all([
+    safeOne(tkOne<TkActivity>("Activiteit", id)),
+    safeOne(tkOne<TkMeeting>("Vergadering", id))
+  ]);
+
+  if (activity) {
+    return activityToItem(activity, activity.Soort?.toLowerCase().includes("debat") ? "debat" : "activiteit");
+  }
+
+  return meeting ? meetingToItem(meeting) : null;
+}
+
+export async function getDossierItemById(id: string) {
+  const [zaak, dossier] = await Promise.all([
+    safeOne(tkOne<TkCase>("Zaak", id)),
+    safeOne(tkOne<TkDossier>("Kamerstukdossier", id))
+  ]);
+
+  if (zaak) {
+    return caseToItem(zaak, zaak.Soort === "Motie" ? "motie" : "dossier");
+  }
+
+  return dossier ? dossierToItem(dossier) : null;
+}
+
+export async function getLetterItemById(id: string) {
+  const letter = await safeOne(tkOne<TkDocument>("Document", id));
+  return letter ? documentToItem(letter) : null;
+}
+
+export async function getMemberItemById(id: string) {
+  const member = await safeOne(tkOne<TkPerson>("Persoon", id));
+  return member ? personToItem(member) : null;
+}
+
+export async function getFactionItemById(id: string) {
+  const faction = await safeOne(tkOne<TkFaction>("Fractie", id));
+  return faction ? factionToItem(faction) : null;
+}
+
+export async function getVoteDetailById(id: string) {
+  const decision = await safeOne(tkOne<TkDecision>("Besluit", id, { $expand: "Zaak,Stemming" }));
+
+  if (decision) {
+    return { summary: decisionToVoteSummary(decision), item: null };
+  }
+
+  const vote = await safeOne(tkOne<TkVote>("Stemming", id, { $expand: "Besluit" }));
+  return { summary: null, item: vote ? voteToItem(vote) : null };
+}
+
 export async function getNowInKamer() {
   const now = new Date().toISOString();
   return tkFetch<TkActivity>("Activiteit", {

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Search, UserCircle } from "lucide-react";
 import { ApiStatusPill } from "@/components/api-status-pill";
 import { SaveButton } from "@/components/save-button";
@@ -60,7 +61,12 @@ export default async function KamerledenPage({ searchParams }: KamerledenPagePro
                 <h2>{item.title}</h2>
                 <p>{item.description}</p>
               </div>
-              <SaveButton kind="kamerlid" refId={item.id} label={item.title} meta={item.meta} />
+              <div className="result-actions">
+                <Link className="secondary-button inline-flex" href={`/kamerleden/${encodeURIComponent(item.id)}`}>
+                  Open profiel
+                </Link>
+                <SaveButton kind="kamerlid" refId={item.id} label={item.title} meta={item.meta} />
+              </div>
             </article>
           );
         })}

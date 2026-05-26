@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { CalendarDays } from "lucide-react";
 import type { MonitorItem } from "@/lib/tk";
 import { SaveButton } from "@/components/save-button";
@@ -6,6 +7,36 @@ type MonitorResultCardProps = {
   item: MonitorItem;
   compact?: boolean;
 };
+
+function itemHref(item: MonitorItem) {
+  const id = encodeURIComponent(item.id);
+
+  if (item.kind === "dossier" || item.kind === "motie") {
+    return `/dossiers/${id}`;
+  }
+
+  if (item.kind === "kamerlid") {
+    return `/kamerleden/${id}`;
+  }
+
+  if (item.kind === "fractie") {
+    return `/fracties/${id}`;
+  }
+
+  if (item.kind === "kamerbrief") {
+    return `/kamerbrieven/${id}`;
+  }
+
+  if (item.kind === "stemming") {
+    return `/stemmingen/${id}`;
+  }
+
+  if (item.kind === "thema") {
+    return `/search?q=${encodeURIComponent(item.title)}`;
+  }
+
+  return `/agenda/${id}`;
+}
 
 export function MonitorResultCard({ item, compact = false }: MonitorResultCardProps) {
   return (
@@ -23,7 +54,12 @@ export function MonitorResultCard({ item, compact = false }: MonitorResultCardPr
         {item.description ? <p>{item.description}</p> : null}
         {item.matchedOn ? <p className="match-label">Match: {item.matchedOn}</p> : null}
       </div>
-      <SaveButton kind={item.kind} refId={item.id} label={item.title} meta={item.meta} />
+      <div className="result-actions">
+        <Link className="secondary-button inline-flex" href={itemHref(item)}>
+          Open
+        </Link>
+        <SaveButton kind={item.kind} refId={item.id} label={item.title} meta={item.meta} />
+      </div>
     </article>
   );
 }

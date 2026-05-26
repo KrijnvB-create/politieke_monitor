@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { FileText, Search } from "lucide-react";
 import { ApiStatusPill } from "@/components/api-status-pill";
 import { SaveButton } from "@/components/save-button";
@@ -53,6 +54,9 @@ export default async function KamerbrievenPage({ searchParams }: KamerbrievenPag
                 <h3>{item.title}</h3>
                 <p>{item.description}</p>
                 <div className="letter-actions">
+                  <Link className="secondary-button inline-flex" href={`/kamerbrieven/${encodeURIComponent(item.id)}`}>
+                    Open detail
+                  </Link>
                   {resourceUrl ? (
                     <a className="secondary-button inline-flex" href={resourceUrl} target="_blank" rel="noreferrer">
                       <FileText size={16} aria-hidden="true" />
