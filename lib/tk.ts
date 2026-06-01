@@ -1,1014 +1,759 @@
-import type { SavedItemKind, SavedItemRecord } from "@/lib/saved-items";
+/**
+ * lib/tk.ts
+ * Typed helpers voor de Tweede Kamer OData v4 API
+ * Base URL: https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0
+ */
 
-const TK_API_BASE = "https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0";
-const CACHE_SECONDS = 15 * 60;
+const TK_BASE = 'https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0';
 
-type ODataResponse<T> = {
-  value?: T[];
-};
+// ─── Utility ────────────────────────────────────────────────────────────────
 
-type UnknownRecord = Record<string, unknown>;
+async function tkFetch<T>(path: string): Promise<T> {
+  const url = `${TK_BASE}${path}`;
+  const res = await fetch(url, { next: { revalidate: 300 } });
+  if (!res.ok) throw new Error(`TK API error ${res.status}: ${url}`);
+  const json = await res.json();
+  return json;
+}
 
-export type TkActivity = {
-  Id?: string;
-  Nummer?: string;
-  Soort?: string;
-  Onderwerp?: string;
-  Titel?: string;
-  Status?: string;
-  Datum?: string | null;
-  Aanvangstijd?: string | null;
-  Eindtijd?: string | null;
-  GewijzigdOp?: string | null;
+/** Bouwt een OData query string op vanuit een object */
+function qs(params: Record<string, string>): string {
+  const parts = Object.entries(params)
+    .filter(([, v]) => v)
+    .map(([k, v]) => `${k}=${v}`);
+  return parts.length ? '?' + parts.join('&') : '';
+}
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+export interface TKListResponse<T> {
+  '@odata.count'?: number;
+  value: T[];
+  '@odata.nextLink'?: string;
+}
+
+export interface Kamerstukdossier {
+  Id: string;
+  Titel: string;
+  Citeertitel?: string;
+  Alias?: string;
+  Nummer?: number;
+  Toevoeging?: string;
+  HoogsteVolgnummer?: number;
+  Afgesloten?: boolean;
+  Kamer?: string;
+  GewijzigdOp?: string;
+  ApiGewijzigdOp?: string;
   Verwijderd?: boolean;
-  Locatie?: string | null;
-  Voortouwnaam?: string | null;
-  Vergaderjaar?: string | null;
-};
-
-export type TkPerson = {
-  Id?: string;
-  Nummer?: number | null;
-  Initialen?: string | null;
-  Tussenvoegsel?: string | null;
-  Achternaam?: string | null;
-  Voornamen?: string | null;
-  Roepnaam?: string | null;
-  Functie?: string | null;
-  Fractielabel?: string | null;
-  GewijzigdOp?: string | null;
-  Verwijderd?: boolean | null;
-};
-
-export type TkCase = {
-  Id?: string;
-  Nummer?: string | null;
-  Soort?: string | null;
-  Titel?: string | null;
-  Status?: string | null;
-  Onderwerp?: string | null;
-  GestartOp?: string | null;
-  Vergaderjaar?: string | null;
-  GewijzigdOp?: string | null;
-  Afgedaan?: boolean | null;
-  Kabinetsappreciatie?: string | null;
-};
-
-export type TkDocument = {
-  Id?: string;
-  Soort?: string | null;
-  DocumentNummer?: string | null;
-  Titel?: string | null;
-  Onderwerp?: string | null;
-  Datum?: string | null;
-  DatumOntvangst?: string | null;
-  Vergaderjaar?: string | null;
-  GewijzigdOp?: string | null;
-};
-
-export type TkVote = {
-  Id?: string;
-  Besluit_Id?: string | null;
-  Soort?: string | null;
-  ActorNaam?: string | null;
-  ActorFractie?: string | null;
-  FractieGrootte?: number | null;
-  Vergissing?: boolean | null;
-  GewijzigdOp?: string | null;
-  Besluit?: {
-    BesluitSoort?: string | null;
-    BesluitTekst?: string | null;
-    Status?: string | null;
-    GewijzigdOp?: string | null;
-  } | null;
-};
-
-export type TkMeeting = {
-  Id?: string;
-  Soort?: string | null;
-  Titel?: string | null;
-  Zaal?: string | null;
-  Vergaderjaar?: string | null;
-  VergaderingNummer?: number | null;
-  Datum?: string | null;
-  Aanvangstijd?: string | null;
-  Sluiting?: string | null;
-  Kamer?: string | null;
-  GewijzigdOp?: string | null;
-  Verwijderd?: boolean | null;
-};
-
-export type TkDossier = {
-  Id?: string;
-  Titel?: string | null;
-  Citeertitel?: string | null;
-  Nummer?: number | null;
-  HoogsteVolgnummer?: number | null;
-  Afgesloten?: boolean | null;
-  Kamer?: string | null;
-  GewijzigdOp?: string | null;
-};
-
-export type MonitorItem = {
-  kind: SavedItemKind;
-  id: string;
-  title: string;
-  eyebrow: string;
-  description: string;
-  date: string;
-  status?: string;
-  meta: UnknownRecord;
-  matchedOn?: string;
-};
-
-export type SearchSection = {
-  id: string;
-  title: string;
-  items: MonitorItem[];
-};
-
-export type DashboardDevelopments = {
-  themes: SavedItemRecord[];
-  members: SavedItemRecord[];
-  debates: SavedItemRecord[];
-  developments: MonitorItem[];
-  votes: MonitorItem[];
-};
-
-function queryString(params: Record<string, string | number | undefined>) {
-  const searchParams = new URLSearchParams();
-
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== "") {
-      searchParams.set(key, String(value));
-    }
-  });
-
-  return searchParams.toString();
+  // expanded
+  Zaak?: Zaak[];
+  Document?: TKDocument[];
 }
 
-async function tkFetch<T>(entity: string, params: Record<string, string | number | undefined>) {
-  const response = await fetch(`${TK_API_BASE}/${entity}?${queryString(params)}`, {
-    headers: { Accept: "application/json" },
-    next: { revalidate: CACHE_SECONDS }
-  });
-
-  if (!response.ok) {
-    throw new Error(`Tweede Kamer API returned ${response.status} for ${entity}`);
-  }
-
-  const payload = (await response.json()) as ODataResponse<T>;
-  return payload.value ?? [];
+export interface Zaak {
+  Id: string;
+  Nummer?: string;
+  Soort?: ZaakSoort;
+  Titel?: string;
+  Citeertitel?: string;
+  Alias?: string;
+  Status?: string;
+  Onderwerp?: string;
+  GestartOp?: string;
+  Organisatie?: string;
+  Vergaderjaar?: string;
+  Volgnummer?: number;
+  HuidigeBehandelstatus?: string;
+  Afgedaan?: boolean;
+  GrootProject?: boolean;
+  Kabinetsappreciatie?: string;
+  GewijzigdOp?: string;
+  ApiGewijzigdOp?: string;
+  Verwijderd?: boolean;
+  // expanded
+  ZaakActor?: ZaakActor[];
+  Activiteit?: Activiteit[];
+  Besluit?: Besluit[];
+  Document?: TKDocument[];
+  Kamerstukdossier?: Kamerstukdossier[];
 }
 
-async function safeList<T>(promise: Promise<T[]>) {
-  try {
-    return await promise;
-  } catch {
-    return [];
-  }
+export type ZaakSoort =
+  | 'Motie'
+  | 'Brief Kamer'
+  | 'Brief regering'
+  | 'Wetgeving'
+  | 'Initiatiefwetgeving'
+  | 'Amendement'
+  | 'Schriftelijke vragen'
+  | 'Mondelinge vragen'
+  | 'Interpellatie'
+  | 'EU-voorstel'
+  | 'Overig'
+  | string;
+
+export interface ZaakActor {
+  Id: string;
+  Relatie?: string; // 'Indiener' | 'Medeondertekenaar' | 'Gericht aan' | etc.
+  ActorNaam?: string;
+  ActorFractie?: string;
+  FunctieNaam?: string;
+  Persoon?: Persoon;
+  Fractie?: Fractie;
+  GewijzigdOp?: string;
+  Verwijderd?: boolean;
 }
 
-function odataString(value: string) {
-  return `'${value.replace(/'/g, "''")}'`;
+export interface TKDocument {
+  Id: string;
+  Titel?: string;
+  Onderwerp?: string;
+  Alias?: string;
+  Datum?: string;
+  Soort?: string;
+  Status?: string;
+  Vergaderjaar?: string;
+  Volgnummer?: number;
+  Nummer?: string;
+  Aanhangselnummer?: string;
+  Kamerstukdossier?: Kamerstukdossier;
+  GewijzigdOp?: string;
+  ApiGewijzigdOp?: string;
+  Verwijderd?: boolean;
+  // expanded
+  DocumentActor?: DocumentActor[];
+  DocumentVersie?: DocumentVersie[];
+  Zaak?: Zaak[];
 }
 
-function compactTerm(value: string) {
-  return value.trim().replace(/\s+/g, " ").slice(0, 90);
+export interface DocumentActor {
+  Id: string;
+  Relatie?: string;
+  ActorNaam?: string;
+  ActorFractie?: string;
+  FunctieNaam?: string;
+  Persoon?: Persoon;
+  Fractie?: Fractie;
+  Verwijderd?: boolean;
 }
 
-function containsAny(fields: string[], value: string) {
-  const term = compactTerm(value);
-  return `(${fields.map((field) => `contains(${field},${odataString(term)})`).join(" or ")})`;
+export interface DocumentVersie {
+  Id: string;
+  Versie?: number;
+  Bestandsgrootte?: number;
+  Extensie?: string;
+  Datum?: string;
+  Status?: string;
+  ExterneIdentificatie?: string;
+  Verwijderd?: boolean;
 }
 
-function withQuery(baseFilter: string, fields: string[], query?: string) {
-  const term = query?.trim();
-  return term ? `${baseFilter} and ${containsAny(fields, term)}` : baseFilter;
+export interface Activiteit {
+  Id: string;
+  Soort?: string;
+  Nummer?: string;
+  Onderwerp?: string;
+  Aanvangstijd?: string;
+  Eindtijd?: string;
+  Locatie?: string;
+  Vergaderjaar?: string;
+  Kamer?: string;
+  Status?: string;
+  Voortouwsamenvatting?: string;
+  GewijzigdOp?: string;
+  ApiGewijzigdOp?: string;
+  Verwijderd?: boolean;
+  // expanded
+  Agendapunt?: Agendapunt[];
+  Commissie?: Commissie[];
+  Zaak?: Zaak[];
+  Verslag?: Verslag[];
 }
 
-function asRecord(value: unknown) {
-  return value as UnknownRecord;
+export interface Agendapunt {
+  Id: string;
+  Onderwerp?: string;
+  Volgorde?: number;
+  Rubriek?: string;
+  Noot?: string;
+  GewijzigdOp?: string;
+  Verwijderd?: boolean;
+  Activiteit?: Activiteit;
+  Zaak?: Zaak[];
+  Besluit?: Besluit[];
 }
 
-export function formatTkDate(value?: string | null) {
-  if (!value) {
-    return "Datum onbekend";
-  }
-
-  return new Intl.DateTimeFormat("nl-NL", {
-    dateStyle: "medium",
-    timeStyle: value.includes("T") ? "short" : undefined
-  }).format(new Date(value));
+export interface Besluit {
+  Id: string;
+  Soort?: string;
+  Status?: string;
+  Opmerking?: string;
+  Tekst?: string;
+  GewijzigdOp?: string;
+  Verwijderd?: boolean;
+  Stemming?: Stemming[];
 }
 
-export async function getRecentActivities() {
-  return tkFetch<TkActivity>("Activiteit", {
-    $filter: "Verwijderd eq false",
-    $orderby: "GewijzigdOp desc",
-    $top: 8
-  });
+export interface Stemming {
+  Id: string;
+  Soort?: string; // 'Met algemene stemmen' | 'Hoofdelijk' | etc.
+  Vergissing?: boolean;
+  FractieGrootte?: number;
+  Fractie?: Fractie;
+  Actor?: Persoon;
+  GewijzigdOp?: string;
+  Verwijderd?: boolean;
 }
 
-export function activityId(activity: TkActivity) {
-  const fallback = [activity.Soort, activity.GewijzigdOp, activity.Onderwerp].filter(Boolean).join(":");
-  return activity.Id ?? activity.Nummer ?? (fallback || "activiteit-onbekend");
+export interface Commissie {
+  Id: string;
+  Afkorting?: string;
+  NaamNL?: string;
+  NaamEN?: string;
+  Soort?: string;
+  Email?: string;
+  GewijzigdOp?: string;
+  Verwijderd?: boolean;
+  // expanded
+  CommissieZetel?: CommissieZetel[];
 }
 
-export function activityTitle(activity: TkActivity) {
-  return activity.Onderwerp ?? activity.Titel ?? activity.Soort ?? "Tweede Kamer-activiteit";
+export interface CommissieZetel {
+  Id: string;
+  Functie?: string;
+  Verwijderd?: boolean;
+  Commissie?: Commissie;
+  CommissieZetelVastPersoon?: CommissieZetelVastPersoon[];
 }
 
-export function activityDate(activity: TkActivity) {
-  return formatTkDate(activity.Aanvangstijd ?? activity.Datum ?? activity.GewijzigdOp);
+export interface CommissieZetelVastPersoon {
+  Id: string;
+  Van?: string;
+  TotEnMet?: string | null;
+  Verwijderd?: boolean;
+  Persoon?: Persoon;
 }
 
-function personName(person: TkPerson) {
-  return [person.Roepnaam ?? person.Voornamen ?? person.Initialen, person.Tussenvoegsel, person.Achternaam]
-    .filter(Boolean)
-    .join(" ")
-    .trim() || "Kamerlid";
+export interface Persoon {
+  Id: string;
+  Titels?: string;
+  Initialen?: string;
+  Tussenvoegsel?: string;
+  Achternaam?: string;
+  Voornamen?: string;
+  Roepnaam?: string;
+  Functie?: string;
+  Geslacht?: string;
+  Geboortedatum?: string;
+  Geboorteplaats?: string;
+  Geboorteland?: string;
+  Overlijdensdatum?: string;
+  GewijzigdOp?: string;
+  Verwijderd?: boolean;
+  // expanded
+  FractieZetelPersoon?: FractieZetelPersoon[];
 }
 
-function dossierToItem(dossier: TkDossier): MonitorItem {
-  const title = dossier.Titel ?? dossier.Citeertitel ?? `Dossier ${dossier.Nummer ?? ""}`.trim();
-
-  return {
-    kind: "dossier",
-    id: dossier.Id ?? String(dossier.Nummer ?? title),
-    title,
-    eyebrow: "Dossier",
-    description: [dossier.Kamer, dossier.Nummer ? `nr. ${dossier.Nummer}` : null, dossier.Afgesloten ? "afgesloten" : "actief"]
-      .filter(Boolean)
-      .join(" / "),
-    date: formatTkDate(dossier.GewijzigdOp),
-    status: dossier.Afgesloten ? "Afgesloten" : "Actief",
-    meta: asRecord(dossier)
-  };
-}
-
-function personToItem(person: TkPerson): MonitorItem {
-  const title = personName(person);
-
-  return {
-    kind: "kamerlid",
-    id: person.Id ?? String(person.Nummer ?? title),
-    title,
-    eyebrow: "Kamerlid",
-    description: [person.Functie, person.Fractielabel].filter(Boolean).join(" / ") || "Tweede Kamer",
-    date: formatTkDate(person.GewijzigdOp),
-    status: person.Functie ?? undefined,
-    meta: asRecord(person)
-  };
-}
-
-function factionToItem(faction: TkFaction): MonitorItem {
-  const title = faction.Afkorting ?? faction.NaamNL ?? "Fractie";
-
-  return {
-    kind: "fractie",
-    id: faction.Id ?? title,
-    title,
-    eyebrow: "Fractie",
-    description: [faction.NaamNL, faction.AantalZetels ? `${faction.AantalZetels} zetels` : null].filter(Boolean).join(" / "),
-    date: formatTkDate(faction.GewijzigdOp),
-    status: faction.AantalZetels ? `${faction.AantalZetels} zetels` : undefined,
-    meta: asRecord(faction)
-  };
-}
-
-function caseToItem(item: TkCase, kind: "motie" | "dossier" = "motie"): MonitorItem {
-  const title = item.Onderwerp ?? item.Titel ?? item.Nummer ?? "Zaak";
-
-  return {
-    kind,
-    id: item.Id ?? item.Nummer ?? title,
-    title,
-    eyebrow: item.Soort ?? (kind === "motie" ? "Motie" : "Zaak"),
-    description: [item.Titel, item.Kabinetsappreciatie, item.Vergaderjaar].filter(Boolean).join(" / "),
-    date: formatTkDate(item.GestartOp ?? item.GewijzigdOp),
-    status: item.Status ?? undefined,
-    meta: asRecord(item)
-  };
-}
-
-function documentToItem(document: TkDocument): MonitorItem {
-  const title = document.Onderwerp ?? document.Titel ?? document.DocumentNummer ?? "Kamerbrief";
-
-  return {
-    kind: "kamerbrief",
-    id: document.Id ?? document.DocumentNummer ?? title,
-    title,
-    eyebrow: document.Soort ?? "Kamerbrief",
-    description: [document.Titel, document.DocumentNummer, document.Vergaderjaar].filter(Boolean).join(" / "),
-    date: formatTkDate(document.DatumOntvangst ?? document.Datum ?? document.GewijzigdOp),
-    status: document.DocumentNummer ?? undefined,
-    meta: asRecord(document)
-  };
-}
-
-function voteToItem(vote: TkVote): MonitorItem {
-  const actor = vote.ActorNaam ?? vote.ActorFractie ?? "Onbekende actor";
-  const besluit = vote.Besluit?.BesluitSoort ?? vote.Besluit?.BesluitTekst ?? vote.Besluit?.Status;
-
-  return {
-    kind: "stemming",
-    id: vote.Id ?? [vote.Besluit_Id, actor, vote.Soort].filter(Boolean).join(":"),
-    title: `${actor} stemde ${vote.Soort ?? "onbekend"}`,
-    eyebrow: "Stemming",
-    description: [besluit, vote.ActorFractie, vote.Vergissing ? "vergissing gemarkeerd" : null].filter(Boolean).join(" / "),
-    date: formatTkDate(vote.GewijzigdOp ?? vote.Besluit?.GewijzigdOp),
-    status: vote.Soort ?? undefined,
-    meta: asRecord(vote)
-  };
-}
-
-function activityToItem(activity: TkActivity, kind: "activiteit" | "debat" = "activiteit"): MonitorItem {
-  const title = activityTitle(activity);
-
-  return {
-    kind,
-    id: activityId(activity),
-    title,
-    eyebrow: activity.Soort ?? (kind === "debat" ? "Debat" : "Activiteit"),
-    description: [activity.Status, activity.Locatie, activity.Voortouwnaam, activity.Vergaderjaar].filter(Boolean).join(" / "),
-    date: activityDate(activity),
-    status: activity.Status ?? undefined,
-    meta: asRecord(activity)
-  };
-}
-
-function meetingToItem(meeting: TkMeeting): MonitorItem {
-  const title = meeting.Titel ?? `${meeting.Soort ?? "Vergadering"} ${meeting.VergaderingNummer ?? ""}`.trim();
-
-  return {
-    kind: "debat",
-    id: meeting.Id ?? title,
-    title,
-    eyebrow: meeting.Soort ? `${meeting.Soort} debat` : "Debat",
-    description: [meeting.Zaal, meeting.Kamer, meeting.Vergaderjaar].filter(Boolean).join(" / "),
-    date: formatTkDate(meeting.Aanvangstijd ?? meeting.Datum ?? meeting.GewijzigdOp),
-    status: meeting.Sluiting ? "Afgelopen" : "Gepland",
-    meta: asRecord(meeting)
-  };
-}
-
-async function searchDossiers(query?: string, top = 6) {
-  const rows = await tkFetch<TkDossier>("Kamerstukdossier", {
-    $filter: withQuery("Verwijderd eq false", ["Titel", "Citeertitel"], query),
-    $orderby: "GewijzigdOp desc",
-    $top: top
-  });
-
-  return rows.map(dossierToItem);
-}
-
-async function searchMembers(query?: string, top = 6) {
-  const rows = await tkFetch<TkPerson>("Persoon", {
-    $filter: withQuery("Verwijderd eq false and Functie eq 'Tweede Kamerlid'", ["Achternaam", "Roepnaam", "Voornamen"], query),
-    $orderby: query ? "GewijzigdOp desc" : "Achternaam asc",
-    $top: top
-  });
-
-  return rows.map(personToItem);
-}
-
-async function searchFactions(query?: string, top = 10) {
-  const rows = await tkFetch<TkFaction>("Fractie", {
-    $filter: withQuery("Verwijderd eq false and DatumInactief eq null", ["Afkorting", "NaamNL"], query),
-    $orderby: "AantalZetels desc",
-    $top: top
-  });
-
-  return rows.map(factionToItem);
-}
-
-async function searchMotions(query?: string, top = 6) {
-  const rows = await tkFetch<TkCase>("Zaak", {
-    $filter: withQuery("Verwijderd eq false and Soort eq 'Motie'", ["Onderwerp", "Titel", "Nummer"], query),
-    $orderby: "GewijzigdOp desc",
-    $top: top
-  });
-
-  return rows.map((item) => caseToItem(item, "motie"));
-}
-
-async function searchCases(query?: string, top = 10) {
-  const rows = await tkFetch<TkCase>("Zaak", {
-    $filter: withQuery("Verwijderd eq false and (Soort eq 'Motie' or Soort eq 'Amendement' or contains(Soort,'Wet'))", ["Onderwerp", "Titel", "Nummer"], query),
-    $orderby: "GewijzigdOp desc",
-    $top: top
-  });
-
-  return rows.map((item) => caseToItem(item, item.Soort === "Motie" ? "motie" : "dossier"));
-}
-
-async function searchLetters(query?: string, top = 6) {
-  const rows = await tkFetch<TkDocument>("Document", {
-    $filter: withQuery("Verwijderd eq false and Soort eq 'Brief regering'", ["Onderwerp", "Titel", "DocumentNummer"], query),
-    $orderby: "GewijzigdOp desc",
-    $top: top
-  });
-
-  return rows.map(documentToItem);
-}
-
-async function searchVotes(query?: string, top = 6) {
-  const rows = await tkFetch<TkVote>("Stemming", {
-    $filter: withQuery("Verwijderd eq false", ["ActorNaam", "ActorFractie", "Soort"], query),
-    $expand: "Besluit",
-    $orderby: "GewijzigdOp desc",
-    $top: top
-  });
-
-  return rows.map(voteToItem);
-}
-
-async function searchDebateActivities(query?: string, top = 6) {
-  const rows = await tkFetch<TkActivity>("Activiteit", {
-    $filter: withQuery("Verwijderd eq false and (contains(Soort,'debat') or contains(Soort,'Debat'))", ["Onderwerp", "Soort"], query),
-    $orderby: "GewijzigdOp desc",
-    $top: top
-  });
-
-  return rows.map((activity) => activityToItem(activity, "debat"));
-}
-
-async function searchAgendaActivities(query?: string, top = 18) {
-  const window = dateWindow(30);
-  const rows = await tkFetch<TkActivity>("Activiteit", {
-    $filter: withQuery(`Verwijderd eq false and Aanvangstijd ge ${window.start}`, ["Onderwerp", "Soort", "Locatie", "Voortouwnaam"], query),
-    $orderby: "Aanvangstijd asc",
-    $top: top
-  });
-
-  return rows.map((activity) => activityToItem(activity, activity.Soort?.toLowerCase().includes("debat") ? "debat" : "activiteit"));
-}
-
-async function searchPastDebates(query?: string, top = 8) {
-  const rows = await tkFetch<TkMeeting>("Vergadering", {
-    $filter: withQuery("Verwijderd eq false and Sluiting ne null", ["Titel", "Soort", "Zaal"], query),
-    $orderby: "Datum desc",
-    $top: top
-  });
-
-  return rows.map(meetingToItem);
-}
-
-function themeItem(query: string): MonitorItem {
-  const term = compactTerm(query);
-
-  return {
-    kind: "thema",
-    id: term.toLowerCase().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || term,
-    title: term,
-    eyebrow: "Thema",
-    description: "Volg dit thema in moties, Kamerbrieven, debatten en dossiers.",
-    date: "Doorlopend",
-    meta: { query: term }
-  };
-}
-
-export async function searchMonitor(query?: string): Promise<SearchSection[]> {
-  const term = query?.trim() ?? "";
-  const [dossiers, members, factions, cases, letters, debates, votes] = await Promise.all([
-    safeList(searchDossiers(term)),
-    safeList(searchMembers(term)),
-    safeList(searchFactions(term)),
-    safeList(searchCases(term)),
-    safeList(searchLetters(term)),
-    safeList(searchDebateActivities(term)),
-    safeList(searchVotes(term))
-  ]);
-
-  return [
-    ...(term ? [{ id: "thema", title: "Thema volgen", items: [themeItem(term)] }] : []),
-    { id: "dossiers", title: "Dossiers", items: dossiers },
-    { id: "kamerleden", title: "Kamerleden", items: members },
-    { id: "fracties", title: "Fracties", items: factions },
-    { id: "zaken", title: "Moties, amendementen en wetten", items: cases },
-    { id: "kamerbrieven", title: "Kamerbrieven", items: letters },
-    { id: "debatten", title: "Debatten", items: debates },
-    { id: "stemmingen", title: "Stemmingen", items: votes }
-  ];
-}
-
-export async function getDebateOverview(query?: string) {
-  const [planned, past] = await Promise.all([
-    safeList(searchDebateActivities(query, 8)),
-    safeList(searchPastDebates(query, 12))
-  ]);
-
-  return { planned, past };
-}
-
-function searchTermForSavedItem(item: SavedItemRecord) {
-  const label = item.label ?? item.ref_id;
-
-  if (item.kind === "kamerlid") {
-    const pieces = label.split(/\s+/).filter(Boolean);
-    return pieces[pieces.length - 1] ?? label;
-  }
-
-  if (item.kind === "debat" || item.kind === "activiteit") {
-    return label.replace(/^debat over\s+/i, "").split(/\s+/).slice(0, 8).join(" ");
-  }
-
-  return label;
-}
-
-async function developmentsForTerm(term: string, matchedOn: string) {
-  const [letters, motions, debates, dossiers] = await Promise.all([
-    safeList(searchLetters(term, 3)),
-    safeList(searchMotions(term, 3)),
-    safeList(searchDebateActivities(term, 3)),
-    safeList(searchDossiers(term, 2))
-  ]);
-
-  return [...letters, ...motions, ...debates, ...dossiers].map((item) => ({ ...item, matchedOn }));
-}
-
-function dedupeItems(items: MonitorItem[]) {
-  const seen = new Set<string>();
-  const unique: MonitorItem[] = [];
-
-  items.forEach((item) => {
-    const key = `${item.kind}:${item.id}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      unique.push(item);
-    }
-  });
-
-  return unique;
-}
-
-export async function getDashboardDevelopments(savedItems: SavedItemRecord[]): Promise<DashboardDevelopments> {
-  const themes = savedItems.filter((item) => item.kind === "thema" || item.kind === "dossier");
-  const members = savedItems.filter((item) => item.kind === "kamerlid");
-  const debates = savedItems.filter((item) => item.kind === "debat" || item.kind === "vergadering" || item.kind === "activiteit");
-  const followed = [...themes, ...members, ...debates].slice(0, 8);
-
-  const matchedGroups = await Promise.all(
-    followed.map((item) => developmentsForTerm(searchTermForSavedItem(item), item.label ?? item.ref_id))
-  );
-
-  const votes = await safeList(searchVotes(undefined, 8));
-
-  return {
-    themes,
-    members,
-    debates,
-    developments: dedupeItems(matchedGroups.flat()).slice(0, 14),
-    votes
-  };
-}
-
-export type TkFaction = {
-  Id?: string;
-  Afkorting?: string | null;
-  NaamNL?: string | null;
-  AantalZetels?: number | null;
-  AantalStemmen?: number | null;
-  DatumActief?: string | null;
+export interface Fractie {
+  Id: string;
+  Afkorting?: string;
+  NaamNL?: string;
+  NaamEN?: string;
+  AantalStemmen?: number;
+  AantalZetels?: number;
+  DatumActief?: string;
   DatumInactief?: string | null;
-  GewijzigdOp?: string | null;
-};
+  GewijzigdOp?: string;
+  Verwijderd?: boolean;
+  // expanded
+  FractieZetel?: FractieZetel[];
+}
 
-export type TkPledge = {
-  Id?: string;
-  Nummer?: string | null;
-  Functie?: string | null;
-  Voornaam?: string | null;
-  Achternaam?: string | null;
-  Status?: string | null;
-  Ministerie?: string | null;
-  Tekst?: string | null;
-  GewijzigdOp?: string | null;
-};
+export interface FractieZetel {
+  Id: string;
+  Verwijderd?: boolean;
+  Fractie?: Fractie;
+  FractieZetelPersoon?: FractieZetelPersoon[];
+}
 
-export type TkReport = {
-  Id?: string;
-  Soort?: string | null;
-  Status?: string | null;
-  ContentType?: string | null;
-  GewijzigdOp?: string | null;
-  Vergadering_Id?: string | null;
-};
+export interface FractieZetelPersoon {
+  Id: string;
+  Van?: string;
+  TotEnMet?: string | null;
+  Verwijderd?: boolean;
+  Persoon?: Persoon;
+  FractieZetel?: FractieZetel;
+}
 
-export type TkDecision = {
-  Id?: string;
-  BesluitSoort?: string | null;
-  BesluitTekst?: string | null;
-  StemmingsSoort?: string | null;
-  Status?: string | null;
-  GewijzigdOp?: string | null;
-  Stemming?: TkVote[];
-  Zaak?: TkCase[];
-};
+export interface Toezegging {
+  Id: string;
+  Tekst?: string;
+  Status?: string;
+  NakomenOp?: string;
+  Ministerie?: string;
+  Minister?: string;
+  DatumToezegging?: string;
+  Kamerstukdossier?: Kamerstukdossier;
+  Activiteit?: Activiteit;
+  GewijzigdOp?: string;
+  Verwijderd?: boolean;
+}
 
-export type VoteLine = {
-  faction: string;
-  vote: string;
-  seats: number;
-};
+export interface Verslag {
+  Id: string;
+  Soort?: string;
+  Status?: string;
+  Vergaderjaar?: string;
+  GewijzigdOp?: string;
+  Verwijderd?: boolean;
+  Activiteit?: Activiteit;
+}
 
-export type VoteSummary = {
-  id: string;
-  title: string;
-  result: string;
-  date: string;
-  voor: number;
-  tegen: number;
-  onthouden: number;
-  total: number;
-  lines: VoteLine[];
-  meta: UnknownRecord;
-};
+// ─── Dossier helpers ────────────────────────────────────────────────────────
 
-export type DataBlock<T> = {
-  items: T[];
-  apiOk: boolean;
-};
-
-export type KamerkompasOverview = {
-  apiOk: boolean;
-  now: MonitorItem[];
-  ticker: MonitorItem[];
-  weekAgenda: MonitorItem[];
-  votes: VoteSummary[];
-  motions: MonitorItem[];
-  letters: MonitorItem[];
-  pledges: MonitorItem[];
-  factions: TkFaction[];
-  reports: TkReport[];
-};
-
-const sampleActivity: TkActivity = {
-  Id: "sample-activity",
-  Soort: "Plenair debat",
-  Onderwerp: "Voorbeelddebat over actuele politieke ontwikkelingen",
-  Status: "Gepland",
-  Locatie: "Plenaire zaal",
-  Vergaderjaar: "Voorbeelddata",
-  GewijzigdOp: new Date().toISOString()
-};
-
-const sampleDocument: TkDocument = {
-  Id: "sample-letter",
-  Soort: "Brief regering",
-  DocumentNummer: "SAMPLE-1",
-  Onderwerp: "Voorbeeldbrief regering",
-  Titel: "Voorbeelddata",
-  GewijzigdOp: new Date().toISOString()
-};
-
-const sampleCase: TkCase = {
-  Id: "sample-motion",
-  Nummer: "SAMPLE-2",
-  Soort: "Motie",
-  Onderwerp: "Voorbeeldmotie over parlementaire monitoring",
-  Status: "Vrijgegeven",
-  GewijzigdOp: new Date().toISOString()
-};
-
-const sampleFaction: TkFaction = {
-  Id: "sample-faction",
-  Afkorting: "TK",
-  NaamNL: "Tweede Kamer",
-  AantalZetels: 150
-};
-
-const samplePledge: TkPledge = {
-  Id: "sample-pledge",
-  Nummer: "TZ-SAMPLE",
-  Functie: "Minister",
-  Status: "Openstaand",
-  Ministerie: "Voorbeeld",
-  Tekst: "Voorbeeldtoezegging wanneer de Tweede Kamer API niet bereikbaar is.",
-  GewijzigdOp: new Date().toISOString()
-};
-
-const sampleReport: TkReport = {
-  Soort: "Tussenpublicatie",
-  Status: "Ongecorrigeerd",
-  GewijzigdOp: new Date().toISOString()
-};
-
-async function block<T>(promise: Promise<T[]>, fallback: T[] = []): Promise<DataBlock<T>> {
+/** Haal één Kamerstukdossier op met gerelateerde Zaken en Documenten */
+export async function getDossier(id: string): Promise<Kamerstukdossier | null> {
   try {
-    return { items: await promise, apiOk: true };
-  } catch {
-    return { items: fallback, apiOk: false };
-  }
-}
-
-function dateWindow(daysAhead: number) {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + daysAhead);
-
-  return {
-    start: start.toISOString(),
-    end: end.toISOString()
-  };
-}
-
-function documentResourceUrl(id?: string | null) {
-  return id ? `https://gegevensmagazijn.tweedekamer.nl/SyncFeed/2.0/Resources/${id}` : undefined;
-}
-
-function reportResourceUrl(id?: string | null) {
-  return id ? `https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0/Verslag(${id})/Resource` : undefined;
-}
-
-function pledgeToItem(pledge: TkPledge): MonitorItem {
-  const actor = [pledge.Functie, pledge.Voornaam, pledge.Achternaam].filter(Boolean).join(" ");
-
-  return {
-    kind: "activiteit",
-    id: pledge.Id ?? pledge.Nummer ?? pledge.Tekst ?? "toezegging",
-    title: pledge.Tekst ?? "Toezegging",
-    eyebrow: pledge.Nummer ?? "Toezegging",
-    description: [actor, pledge.Ministerie, pledge.Status].filter(Boolean).join(" / "),
-    date: formatTkDate(pledge.GewijzigdOp),
-    status: pledge.Status ?? undefined,
-    meta: asRecord(pledge)
-  };
-}
-
-function reportToItem(report: TkReport): MonitorItem {
-  return {
-    kind: "debat",
-    id: report.Id ?? "verslag",
-    title: `${report.Soort ?? "Verslag"} - ${report.Status ?? "status onbekend"}`,
-    eyebrow: "Verslag",
-    description: reportResourceUrl(report.Id) ?? "Ongecorrigeerde publicatie",
-    date: formatTkDate(report.GewijzigdOp),
-    status: report.Status ?? undefined,
-    meta: asRecord(report)
-  };
-}
-
-function decisionToVoteSummary(decision: TkDecision): VoteSummary {
-  const lines = (decision.Stemming ?? []).map((vote) => ({
-    faction: vote.ActorFractie ?? vote.ActorNaam ?? "Onbekend",
-    vote: vote.Soort ?? "Onbekend",
-    seats: vote.FractieGrootte ?? 0
-  }));
-  const totalFor = lines.filter((line) => line.vote === "Voor").reduce((sum, line) => sum + line.seats, 0);
-  const totalAgainst = lines.filter((line) => line.vote === "Tegen").reduce((sum, line) => sum + line.seats, 0);
-  const totalAbstain = lines.filter((line) => line.vote === "Onthouden").reduce((sum, line) => sum + line.seats, 0);
-  const zaak = decision.Zaak?.[0];
-
-  return {
-    id: decision.Id ?? decision.BesluitTekst ?? "stemming",
-    title: zaak?.Onderwerp ?? decision.BesluitTekst ?? decision.BesluitSoort ?? "Stemming",
-    result: decision.BesluitSoort ?? decision.Status ?? "Uitslag onbekend",
-    date: formatTkDate(decision.GewijzigdOp),
-    voor: totalFor,
-    tegen: totalAgainst,
-    onthouden: totalAbstain,
-    total: Math.max(totalFor + totalAgainst + totalAbstain, 1),
-    lines,
-    meta: asRecord(decision)
-  };
-}
-
-export function personResourceUrl(id?: string | null) {
-  return id ? `${TK_API_BASE}/Persoon/${id}/resource` : undefined;
-}
-
-export function factionResourceUrl(id?: string | null) {
-  return id ? `https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0/Fractie(${id})/Resource` : undefined;
-}
-
-export { documentResourceUrl, reportResourceUrl };
-
-function odataId(value: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
-    ? value
-    : odataString(value);
-}
-
-async function tkOne<T>(entity: string, id: string, params: Record<string, string | number | undefined> = {}) {
-  const rows = await tkFetch<T>(entity, {
-    $filter: `Id eq ${odataId(id)}`,
-    $top: 1,
-    ...params
-  });
-
-  return rows[0] ?? null;
-}
-
-async function safeOne<T>(promise: Promise<T | null>) {
-  try {
-    return await promise;
+    const expand = [
+      'Zaak($expand=ZaakActor($expand=Persoon,Fractie);$filter=Verwijderd eq false;$orderby=GestartOp desc)',
+      'Document($expand=DocumentActor($expand=Persoon,Fractie);$filter=Verwijderd eq false;$orderby=Datum desc)',
+    ].join(',');
+    const data = await tkFetch<Kamerstukdossier>(
+      `/Kamerstukdossier(${id})?$expand=${expand}`
+    );
+    return data;
   } catch {
     return null;
   }
 }
 
-export async function getAgendaItemById(id: string) {
-  const [activity, meeting] = await Promise.all([
-    safeOne(tkOne<TkActivity>("Activiteit", id)),
-    safeOne(tkOne<TkMeeting>("Vergadering", id))
-  ]);
+/** Lijst van Kamerstukdossiers, optioneel gefilterd */
+export async function getDossiers(opts?: {
+  top?: number;
+  skip?: number;
+  afgesloten?: boolean;
+  search?: string;
+}): Promise<TKListResponse<Kamerstukdossier>> {
+  const filters = ['Verwijderd eq false'];
+  if (opts?.afgesloten !== undefined)
+    filters.push(`Afgesloten eq ${opts.afgesloten}`);
+  if (opts?.search)
+    filters.push(`contains(Titel,'${opts.search.replace(/'/g, "''")}')`);
 
-  if (activity) {
-    return activityToItem(activity, activity.Soort?.toLowerCase().includes("debat") ? "debat" : "activiteit");
+  const params: Record<string, string> = {
+    '$filter': filters.join(' and '),
+    '$orderby': 'GewijzigdOp desc',
+    '$top': String(opts?.top ?? 25),
+    '$count': 'true',
+  };
+  if (opts?.skip) params['$skip'] = String(opts.skip);
+
+  const path = `/Kamerstukdossier${qs(params)}`;
+  try {
+    return await tkFetch<TKListResponse<Kamerstukdossier>>(path);
+  } catch {
+    return { value: [] };
+  }
+}
+
+// ─── Tijdlijn voor een dossier ───────────────────────────────────────────────
+
+export type TimelineItemType =
+  | 'motie'
+  | 'kamerbrief'
+  | 'debat'
+  | 'stemming'
+  | 'toezegging'
+  | 'verslag'
+  | 'document'
+  | 'zaak';
+
+export interface TimelineItem {
+  id: string;
+  type: TimelineItemType;
+  date: string;
+  title: string;
+  onderwerp?: string;
+  status?: string;
+  kabinetsappreciatie?: string;
+  // relaties
+  commissies?: { id: string; naam: string; afkorting?: string }[];
+  kamerleden?: { id: string; naam: string; fractie?: string }[];
+  fracties?: { id: string; naam: string; afkorting?: string }[];
+  // deep links
+  zaakId?: string;
+  activiteitId?: string;
+  besluitId?: string;
+}
+
+/** Bouw een uniforme tijdlijn op vanuit een dossier */
+export function buildTimeline(dossier: Kamerstukdossier): TimelineItem[] {
+  const items: TimelineItem[] = [];
+
+  // Zaken (moties, brieven, etc.)
+  for (const zaak of dossier.Zaak ?? []) {
+    if (zaak.Verwijderd) continue;
+    const type = mapZaakSoortToType(zaak.Soort);
+    items.push({
+      id: zaak.Id,
+      type,
+      date: zaak.GestartOp ?? zaak.GewijzigdOp ?? '',
+      title: zaak.Titel ?? zaak.Soort ?? 'Onbekend',
+      onderwerp: zaak.Onderwerp,
+      status: zaak.HuidigeBehandelstatus ?? zaak.Status,
+      kabinetsappreciatie: zaak.Kabinetsappreciatie,
+      kamerleden: (zaak.ZaakActor ?? [])
+        .filter((a) => a.Persoon && !a.Verwijderd)
+        .map((a) => ({
+          id: a.Persoon!.Id,
+          naam: persoonNaam(a.Persoon!),
+          fractie: a.ActorFractie,
+        })),
+      fracties: uniqueById(
+        (zaak.ZaakActor ?? [])
+          .filter((a) => a.Fractie && !a.Verwijderd)
+          .map((a) => ({
+            id: a.Fractie!.Id,
+            naam: a.Fractie!.NaamNL ?? a.Fractie!.Afkorting ?? '',
+            afkorting: a.Fractie!.Afkorting,
+          }))
+      ),
+      zaakId: zaak.Id,
+    });
   }
 
-  return meeting ? meetingToItem(meeting) : null;
-}
-
-export async function getDossierItemById(id: string) {
-  const [zaak, dossier] = await Promise.all([
-    safeOne(tkOne<TkCase>("Zaak", id)),
-    safeOne(tkOne<TkDossier>("Kamerstukdossier", id))
-  ]);
-
-  if (zaak) {
-    return caseToItem(zaak, zaak.Soort === "Motie" ? "motie" : "dossier");
+  // Documenten (Kamerbrieven, bijlagen, etc.)
+  for (const doc of dossier.Document ?? []) {
+    if (doc.Verwijderd) continue;
+    items.push({
+      id: doc.Id,
+      type: mapDocSoortToType(doc.Soort),
+      date: doc.Datum ?? doc.GewijzigdOp ?? '',
+      title: doc.Titel ?? doc.Soort ?? 'Document',
+      onderwerp: doc.Onderwerp,
+      status: doc.Status,
+      kamerleden: (doc.DocumentActor ?? [])
+        .filter((a) => a.Persoon && !a.Verwijderd)
+        .map((a) => ({
+          id: a.Persoon!.Id,
+          naam: persoonNaam(a.Persoon!),
+          fractie: a.ActorFractie,
+        })),
+      fracties: uniqueById(
+        (doc.DocumentActor ?? [])
+          .filter((a) => a.Fractie && !a.Verwijderd)
+          .map((a) => ({
+            id: a.Fractie!.Id,
+            naam: a.Fractie!.NaamNL ?? a.Fractie!.Afkorting ?? '',
+            afkorting: a.Fractie!.Afkorting,
+          }))
+      ),
+    });
   }
 
-  return dossier ? dossierToItem(dossier) : null;
+  // Sorteer: nieuwste bovenaan
+  return items.sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
 }
 
-export async function getLetterItemById(id: string) {
-  const letter = await safeOne(tkOne<TkDocument>("Document", id));
-  return letter ? documentToItem(letter) : null;
+function mapZaakSoortToType(soort?: string): TimelineItemType {
+  if (!soort) return 'zaak';
+  if (soort === 'Motie') return 'motie';
+  if (soort.includes('Brief')) return 'kamerbrief';
+  if (soort === 'Wetgeving' || soort === 'Initiatiefwetgeving') return 'document';
+  return 'zaak';
 }
 
-export async function getMemberItemById(id: string) {
-  const member = await safeOne(tkOne<TkPerson>("Persoon", id));
-  return member ? personToItem(member) : null;
+function mapDocSoortToType(soort?: string): TimelineItemType {
+  if (!soort) return 'document';
+  if (soort.includes('Brief')) return 'kamerbrief';
+  if (soort.includes('Verslag')) return 'verslag';
+  return 'document';
 }
 
-export async function getFactionItemById(id: string) {
-  const faction = await safeOne(tkOne<TkFaction>("Fractie", id));
-  return faction ? factionToItem(faction) : null;
-}
+// ─── Zaak helpers ───────────────────────────────────────────────────────────
 
-export async function getVoteDetailById(id: string) {
-  const decision = await safeOne(tkOne<TkDecision>("Besluit", id, { $expand: "Zaak,Stemming" }));
-
-  if (decision) {
-    return { summary: decisionToVoteSummary(decision), item: null };
+export async function getZaak(id: string): Promise<Zaak | null> {
+  try {
+    const expand = [
+      'ZaakActor($expand=Persoon,Fractie;$filter=Verwijderd eq false)',
+      'Besluit($expand=Stemming($expand=Fractie);$filter=Verwijderd eq false)',
+      'Document($expand=DocumentActor($expand=Persoon,Fractie);$filter=Verwijderd eq false)',
+      'Activiteit($expand=Commissie;$filter=Verwijderd eq false)',
+      'Kamerstukdossier($filter=Verwijderd eq false)',
+    ].join(',');
+    return await tkFetch<Zaak>(`/Zaak(${id})?$expand=${expand}`);
+  } catch {
+    return null;
   }
-
-  const vote = await safeOne(tkOne<TkVote>("Stemming", id, { $expand: "Besluit" }));
-  return { summary: null, item: vote ? voteToItem(vote) : null };
 }
 
-export async function getNowInKamer() {
-  const now = new Date().toISOString();
-  return tkFetch<TkActivity>("Activiteit", {
-    $filter: `Verwijderd eq false and Aanvangstijd le ${now} and Eindtijd ge ${now}`,
-    $orderby: "Aanvangstijd asc",
-    $top: 5
-  });
+export async function getMoties(opts?: {
+  top?: number;
+  skip?: number;
+  dossierId?: string;
+}): Promise<TKListResponse<Zaak>> {
+  const filters = ["Verwijderd eq false", "Soort eq 'Motie'"];
+  const params: Record<string, string> = {
+    '$filter': filters.join(' and '),
+    '$expand': 'ZaakActor($expand=Persoon,Fractie;$filter=Verwijderd eq false)',
+    '$orderby': 'GestartOp desc',
+    '$top': String(opts?.top ?? 25),
+    '$count': 'true',
+  };
+  if (opts?.skip) params['$skip'] = String(opts.skip);
+  try {
+    return await tkFetch<TKListResponse<Zaak>>(`/Zaak${qs(params)}`);
+  } catch {
+    return { value: [] };
+  }
 }
 
-export async function getWeekAgenda() {
-  const window = dateWindow(7);
-  return tkFetch<TkActivity>("Activiteit", {
-    $filter: `Verwijderd eq false and Aanvangstijd ge ${window.start} and Aanvangstijd le ${window.end}`,
-    $orderby: "Aanvangstijd asc",
-    $top: 12
-  });
+// ─── Document helpers ────────────────────────────────────────────────────────
+
+export async function getDocument(id: string): Promise<TKDocument | null> {
+  try {
+    const expand = [
+      'DocumentActor($expand=Persoon,Fractie;$filter=Verwijderd eq false)',
+      'DocumentVersie($filter=Verwijderd eq false)',
+      'Zaak($expand=Kamerstukdossier;$filter=Verwijderd eq false)',
+    ].join(',');
+    return await tkFetch<TKDocument>(`/Document(${id})?$expand=${expand}`);
+  } catch {
+    return null;
+  }
 }
 
-export async function getRecentDecisions(top = 8) {
-  const rows = await tkFetch<TkDecision>("Besluit", {
-    $filter: "Verwijderd eq false and (BesluitSoort eq 'Stemmen - aangenomen' or BesluitSoort eq 'Stemmen - verworpen')",
-    $expand: "Zaak,Stemming",
-    $orderby: "GewijzigdOp desc",
-    $top: top
-  });
-
-  return rows.map(decisionToVoteSummary);
+export async function getKamerbrieven(opts?: {
+  top?: number;
+  skip?: number;
+}): Promise<TKListResponse<TKDocument>> {
+  const params: Record<string, string> = {
+    '$filter': "Verwijderd eq false and contains(Soort,'Brief')",
+    '$expand': 'DocumentActor($expand=Persoon,Fractie;$filter=Verwijderd eq false)',
+    '$orderby': 'Datum desc',
+    '$top': String(opts?.top ?? 25),
+    '$count': 'true',
+  };
+  if (opts?.skip) params['$skip'] = String(opts.skip);
+  try {
+    return await tkFetch<TKListResponse<TKDocument>>(`/Document${qs(params)}`);
+  } catch {
+    return { value: [] };
+  }
 }
 
-export async function getRecentLetters(top = 8) {
-  return searchLetters(undefined, top);
+// ─── Activiteit / Debat helpers ──────────────────────────────────────────────
+
+export async function getActiviteit(id: string): Promise<Activiteit | null> {
+  try {
+    const expand = [
+      'Agendapunt($expand=Zaak,Besluit($expand=Stemming($expand=Fractie));$filter=Verwijderd eq false;$orderby=Volgorde asc)',
+      'Commissie($filter=Verwijderd eq false)',
+      'Verslag($filter=Verwijderd eq false)',
+      'Zaak($expand=ZaakActor($expand=Persoon,Fractie);$filter=Verwijderd eq false)',
+    ].join(',');
+    return await tkFetch<Activiteit>(`/Activiteit(${id})?$expand=${expand}`);
+  } catch {
+    return null;
+  }
 }
 
-export async function getRecentMotions(top = 8) {
-  return searchMotions(undefined, top);
+export async function getActiviteiten(opts?: {
+  top?: number;
+  skip?: number;
+  soort?: string;
+  vanaf?: string;
+}): Promise<TKListResponse<Activiteit>> {
+  const filters = ['Verwijderd eq false'];
+  if (opts?.soort) filters.push(`Soort eq '${opts.soort}'`);
+  if (opts?.vanaf) filters.push(`Aanvangstijd ge ${opts.vanaf}`);
+
+  const params: Record<string, string> = {
+    '$filter': filters.join(' and '),
+    '$expand': 'Commissie($filter=Verwijderd eq false)',
+    '$orderby': 'Aanvangstijd desc',
+    '$top': String(opts?.top ?? 25),
+    '$count': 'true',
+  };
+  if (opts?.skip) params['$skip'] = String(opts.skip);
+  try {
+    return await tkFetch<TKListResponse<Activiteit>>(`/Activiteit${qs(params)}`);
+  } catch {
+    return { value: [] };
+  }
 }
 
-export async function getRecentDossiers(top = 12) {
-  return searchDossiers(undefined, top);
+// ─── Commissie helpers ───────────────────────────────────────────────────────
+
+export async function getCommissies(): Promise<TKListResponse<Commissie>> {
+  try {
+    return await tkFetch<TKListResponse<Commissie>>(
+      `/Commissie?$filter=Verwijderd eq false&$orderby=NaamNL asc&$top=100`
+    );
+  } catch {
+    return { value: [] };
+  }
 }
 
-export async function getMembers(top = 30) {
-  return searchMembers(undefined, top);
+export async function getCommissie(id: string): Promise<Commissie | null> {
+  try {
+    const expand = [
+      'CommissieZetel($expand=CommissieZetelVastPersoon($expand=Persoon($expand=FractieZetelPersoon($expand=FractieZetel($expand=Fractie)));$filter=TotEnMet eq null and Verwijderd eq false);$filter=Verwijderd eq false)',
+    ].join(',');
+    return await tkFetch<Commissie>(`/Commissie(${id})?$expand=${expand}`);
+  } catch {
+    return null;
+  }
 }
 
-export async function getFactions(top = 30) {
-  return tkFetch<TkFaction>("Fractie", {
-    $filter: "Verwijderd eq false and DatumInactief eq null",
-    $orderby: "AantalZetels desc",
-    $top: top
-  });
+// ─── Persoon / Kamerlid helpers ──────────────────────────────────────────────
+
+export async function getKamerleden(): Promise<TKListResponse<Persoon>> {
+  try {
+    return await tkFetch<TKListResponse<Persoon>>(
+      `/Persoon?$filter=Verwijderd eq false and (Functie eq 'Tweede Kamerlid')&$expand=FractieZetelPersoon($expand=FractieZetel($expand=Fractie);$filter=TotEnMet eq null and Verwijderd eq false)&$orderby=Achternaam asc&$top=200`
+    );
+  } catch {
+    return { value: [] };
+  }
 }
 
-export async function getRecentPledges(top = 6) {
-  const rows = await tkFetch<TkPledge>("Toezegging", {
-    $filter: "Verwijderd eq false",
-    $orderby: "GewijzigdOp desc",
-    $top: top
-  });
-
-  return rows.map(pledgeToItem);
+export async function getPersoon(id: string): Promise<Persoon | null> {
+  try {
+    const expand = [
+      'FractieZetelPersoon($expand=FractieZetel($expand=Fractie);$filter=Verwijderd eq false)',
+    ].join(',');
+    return await tkFetch<Persoon>(`/Persoon(${id})?$expand=${expand}`);
+  } catch {
+    return null;
+  }
 }
 
-export async function getRecentReports(top = 5) {
-  return tkFetch<TkReport>("Verslag", {
-    $filter: "Verwijderd eq false",
-    $orderby: "GewijzigdOp desc",
-    $top: top
-  });
+export async function getZakenVanPersoon(
+  persoonId: string,
+  opts?: { top?: number }
+): Promise<TKListResponse<Zaak>> {
+  try {
+    const filter = `Verwijderd eq false and ZaakActor/any(a:a/Verwijderd eq false and a/Persoon/Id eq ${persoonId})`;
+    return await tkFetch<TKListResponse<Zaak>>(
+      `/Zaak?$filter=${encodeURIComponent(filter)}&$orderby=GestartOp desc&$top=${opts?.top ?? 20}&$expand=ZaakActor($expand=Persoon,Fractie;$filter=Verwijderd eq false)`
+    );
+  } catch {
+    return { value: [] };
+  }
 }
 
-export async function getRecentReportsAsItems(top = 5) {
-  const rows = await getRecentReports(top);
-  return rows.map(reportToItem);
+// ─── Fractie helpers ─────────────────────────────────────────────────────────
+
+export async function getFracties(): Promise<TKListResponse<Fractie>> {
+  try {
+    return await tkFetch<TKListResponse<Fractie>>(
+      `/Fractie?$filter=Verwijderd eq false and DatumInactief eq null&$orderby=AantalZetels desc&$top=50`
+    );
+  } catch {
+    return { value: [] };
+  }
 }
 
-export async function getAgendaOverview(query?: string) {
-  const [planned, past] = await Promise.all([
-    block(searchAgendaActivities(query, 18), [activityToItem(sampleActivity, "debat")]),
-    block(searchPastDebates(query, 12), [])
+export async function getFractie(id: string): Promise<Fractie | null> {
+  try {
+    const expand =
+      'FractieZetel($expand=FractieZetelPersoon($expand=Persoon;$filter=TotEnMet eq null and Verwijderd eq false);$filter=Verwijderd eq false)';
+    return await tkFetch<Fractie>(`/Fractie(${id})?$expand=${expand}`);
+  } catch {
+    return null;
+  }
+}
+
+// ─── Toezegging helpers ──────────────────────────────────────────────────────
+
+export async function getToezeggingen(opts?: {
+  top?: number;
+  status?: string;
+}): Promise<TKListResponse<Toezegging>> {
+  const filters = ['Verwijderd eq false'];
+  if (opts?.status) filters.push(`Status eq '${opts.status}'`);
+  try {
+    return await tkFetch<TKListResponse<Toezegging>>(
+      `/Toezegging?$filter=${filters.join(' and ')}&$orderby=DatumToezegging desc&$top=${opts?.top ?? 25}`
+    );
+  } catch {
+    return { value: [] };
+  }
+}
+
+// ─── Zoeken ──────────────────────────────────────────────────────────────────
+
+export interface SearchResults {
+  dossiers: Kamerstukdossier[];
+  zaken: Zaak[];
+  documenten: TKDocument[];
+  personen: Persoon[];
+  commissies: Commissie[];
+}
+
+export async function searchAll(query: string): Promise<SearchResults> {
+  const q = query.replace(/'/g, "''");
+  const [dossiers, zaken, documenten, personen, commissies] = await Promise.all([
+    tkFetch<TKListResponse<Kamerstukdossier>>(
+      `/Kamerstukdossier?$filter=Verwijderd eq false and contains(Titel,'${q}')&$top=5`
+    ).catch(() => ({ value: [] as Kamerstukdossier[] })),
+    tkFetch<TKListResponse<Zaak>>(
+      `/Zaak?$filter=Verwijderd eq false and (contains(Titel,'${q}') or contains(Onderwerp,'${q}'))&$top=5&$expand=ZaakActor($expand=Persoon,Fractie;$filter=Verwijderd eq false)`
+    ).catch(() => ({ value: [] as Zaak[] })),
+    tkFetch<TKListResponse<TKDocument>>(
+      `/Document?$filter=Verwijderd eq false and contains(Titel,'${q}')&$top=5`
+    ).catch(() => ({ value: [] as TKDocument[] })),
+    tkFetch<TKListResponse<Persoon>>(
+      `/Persoon?$filter=Verwijderd eq false and contains(Achternaam,'${q}')&$top=5`
+    ).catch(() => ({ value: [] as Persoon[] })),
+    tkFetch<TKListResponse<Commissie>>(
+      `/Commissie?$filter=Verwijderd eq false and contains(NaamNL,'${q}')&$top=5`
+    ).catch(() => ({ value: [] as Commissie[] })),
   ]);
-
   return {
-    apiOk: planned.apiOk && past.apiOk,
-    planned: planned.items,
-    past: past.items
+    dossiers: dossiers.value,
+    zaken: zaken.value,
+    documenten: documenten.value,
+    personen: personen.value,
+    commissies: commissies.value,
   };
 }
 
-export async function getKamerkompasOverview(): Promise<KamerkompasOverview> {
-  const [now, ticker, weekAgenda, votes, motions, letters, pledges, factions, reports] = await Promise.all([
-    block(getNowInKamer().then((items) => items.map((item) => activityToItem(item, "activiteit"))), [activityToItem(sampleActivity)]),
-    block(getRecentActivities().then((items) => items.map((item) => activityToItem(item))), [activityToItem(sampleActivity)]),
-    block(getWeekAgenda().then((items) => items.map((item) => activityToItem(item))), [activityToItem(sampleActivity)]),
-    block(getRecentDecisions(5), [decisionToVoteSummary({ Id: "sample-vote", BesluitSoort: "Voorbeelddata", BesluitTekst: "Voorbeeldstemming", Stemming: [] })]),
-    block(getRecentMotions(5), [caseToItem(sampleCase, "motie")]),
-    block(getRecentLetters(5), [documentToItem(sampleDocument)]),
-    block(getRecentPledges(4), [pledgeToItem(samplePledge)]),
-    block(getFactions(20), [sampleFaction]),
-    block(getRecentReports(2), [sampleReport])
-  ]);
+// ─── Utils ───────────────────────────────────────────────────────────────────
 
-  return {
-    apiOk: [now, ticker, weekAgenda, votes, motions, letters, pledges, factions, reports].every((item) => item.apiOk),
-    now: now.items,
-    ticker: ticker.items,
-    weekAgenda: weekAgenda.items,
-    votes: votes.items,
-    motions: motions.items,
-    letters: letters.items,
-    pledges: pledges.items,
-    factions: factions.items,
-    reports: reports.items
-  };
+export function persoonNaam(p: Persoon): string {
+  const parts = [p.Roepnaam ?? p.Voornamen, p.Tussenvoegsel, p.Achternaam].filter(Boolean);
+  return parts.join(' ');
 }
 
-export async function getLettersOverview(query?: string) {
-  return block(searchLetters(query, 20), [documentToItem(sampleDocument)]);
+export function formatDate(iso?: string): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('nl-NL', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
-export async function getDossiersOverview(query?: string) {
-  const [dossiers, motions] = await Promise.all([
-    block(searchDossiers(query, 14), [dossierToItem({ Id: "sample-dossier", Titel: "Voorbeelddossier", GewijzigdOp: new Date().toISOString() })]),
-    block(searchCases(query, 12), [caseToItem(sampleCase, "motie")])
-  ]);
-
-  return {
-    apiOk: dossiers.apiOk && motions.apiOk,
-    dossiers: dossiers.items,
-    motions: motions.items
-  };
+export function formatDateShort(iso?: string): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('nl-NL', {
+    day: 'numeric',
+    month: 'short',
+  });
 }
 
-export async function getMembersOverview(query?: string) {
-  return block(searchMembers(query, 40), [personToItem({ Id: "sample-member", Roepnaam: "Voorbeeld", Achternaam: "Kamerlid", Functie: "Tweede Kamerlid" })]);
+function uniqueById<T extends { id: string }>(arr: T[]): T[] {
+  const seen = new Set<string>();
+  return arr.filter((x) => {
+    if (seen.has(x.id)) return false;
+    seen.add(x.id);
+    return true;
+  });
 }
 
-export async function getFactionsOverview() {
-  return block(getFactions(30), [sampleFaction]);
-}
-
-export async function getVotesOverview() {
-  return block(getRecentDecisions(18), [
-    decisionToVoteSummary({ Id: "sample-vote", BesluitSoort: "Voorbeelddata", BesluitTekst: "Voorbeeldstemming", Stemming: [] })
-  ]);
-}
-
-export async function getReportsOverview() {
-  return block(getRecentReports(14), [sampleReport]);
-}
+export const TK_DOCUMENT_URL = (id: string) =>
+  `https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0/Document(${id})/resource`;
