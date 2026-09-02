@@ -12,8 +12,8 @@ import { TimelineCard } from '@/components/TimelineCard';
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface PageProps {
-  params: { id: string };
-  searchParams?: { filter?: string };
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ filter?: string }>;
 }
 
 // ─── Filter tabs ─────────────────────────────────────────────────────────────
@@ -31,13 +31,15 @@ const FILTER_TABS: { key: string; label: string; types?: TimelineItemType[] }[] 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default async function DossierPage({ params, searchParams }: PageProps) {
-  const dossier = await getDossier(params.id);
+  const { id } = await params;
+  const resolvedSearchParams = await searchParams;
+  const dossier = await getDossier(id);
 
   if (!dossier) {
     notFound();
   }
 
-  const activeFilter = searchParams?.filter ?? 'alles';
+  const activeFilter = resolvedSearchParams?.filter ?? 'alles';
   const filterConfig = FILTER_TABS.find((t) => t.key === activeFilter) ?? FILTER_TABS[0];
 
   const allItems = buildTimeline(dossier);
@@ -134,7 +136,8 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
 // ─── Metadata ────────────────────────────────────────────────────────────────
 
 export async function generateMetadata({ params }: PageProps) {
-  const dossier = await getDossier(params.id);
+  const { id } = await params;
+  const dossier = await getDossier(id);
   if (!dossier) return { title: 'Dossier niet gevonden' };
   return {
     title: `${dossier.Titel} — Politiekemonitor`,

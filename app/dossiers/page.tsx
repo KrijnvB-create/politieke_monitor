@@ -7,13 +7,14 @@ import Link from 'next/link';
 import { getDossiers, formatDate } from '@/lib/tk';
 
 interface PageProps {
-  searchParams?: { q?: string; page?: string; status?: string };
+  searchParams?: Promise<{ q?: string; page?: string; status?: string }>;
 }
 
 export default async function DossiersPage({ searchParams }: PageProps) {
-  const page = Number(searchParams?.page ?? 1);
-  const query = searchParams?.q ?? '';
-  const status = searchParams?.status;
+  const resolvedSearchParams = await searchParams;
+  const page = Number(resolvedSearchParams?.page ?? 1);
+  const query = resolvedSearchParams?.q ?? '';
+  const status = resolvedSearchParams?.status;
   const top = 25;
   const skip = (page - 1) * top;
 
