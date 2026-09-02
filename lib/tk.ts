@@ -168,9 +168,8 @@ export interface Activiteit {
     Verwijderd?: boolean;
     // expanded
   Agendapunt?: Agendapunt[];
-    Commissie?: Commissie[];
+    Voortouwcommissie?: Commissie;
     Zaak?: Zaak[];
-    Verslag?: Verslag[];
 }
 
 export interface Agendapunt {
@@ -484,7 +483,7 @@ export async function getZaak(id: string): Promise<Zaak | null> {
                   'ZaakActor($expand=Persoon,Fractie;$filter=Verwijderd eq false)',
                   'Besluit($expand=Stemming($expand=Fractie);$filter=Verwijderd eq false)',
                   'Document($expand=DocumentActor($expand=Persoon,Fractie);$filter=Verwijderd eq false)',
-                  'Activiteit($expand=Commissie;$filter=Verwijderd eq false)',
+                  'Activiteit($expand=Voortouwcommissie;$filter=Verwijderd eq false)',
                   'Kamerstukdossier($filter=Verwijderd eq false)',
                 ].join(',');
           return await tkFetch<Zaak>(`/Zaak(${id})?$expand=${expand}`);
@@ -561,8 +560,7 @@ export async function getActiviteit(id: string): Promise<Activiteit | null> {
     try {
           const expand = [
                   'Agendapunt($expand=Zaak,Besluit($expand=Stemming($expand=Fractie));$filter=Verwijderd eq false;$orderby=Volgorde asc)',
-                  'Commissie($filter=Verwijderd eq false)',
-                  'Verslag($filter=Verwijderd eq false)',
+                  'Voortouwcommissie',
                   'Zaak($expand=ZaakActor($expand=Persoon,Fractie);$filter=Verwijderd eq false)',
                 ].join(',');
           return await tkFetch<Activiteit>(`/Activiteit(${id})?$expand=${expand}`);
@@ -585,7 +583,7 @@ export async function getActiviteiten(opts?: {
 
   const params: Record<string, string> = {
         '$filter': filters.join(' and '),
-        '$expand': 'Commissie($filter=Verwijderd eq false)',
+        '$expand': 'Voortouwcommissie',
         '$orderby': 'Aanvangstijd desc',
         '$top': String(opts?.top ?? 25),
         '$count': 'true',
