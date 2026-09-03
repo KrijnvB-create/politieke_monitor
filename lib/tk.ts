@@ -575,6 +575,7 @@ export async function getActiviteiten(opts?: {
     soort?: string;
     vanaf?: string;
     search?: string;
+    orderby?: 'asc' | 'desc';
 }): Promise<TKListResponse<Activiteit>> {
     const filters = ['Verwijderd eq false'];
     if (opts?.soort) filters.push(`Soort eq '${opts.soort}'`);
@@ -584,7 +585,7 @@ export async function getActiviteiten(opts?: {
   const params: Record<string, string> = {
         '$filter': filters.join(' and '),
         '$expand': 'Voortouwcommissie',
-        '$orderby': 'Aanvangstijd desc',
+        '$orderby': `Aanvangstijd ${opts?.orderby ?? 'desc'}`,
         '$top': String(opts?.top ?? 25),
         '$count': 'true',
   };
@@ -1083,16 +1084,31 @@ function splitPlannedPast(activiteiten: Activiteit[]): { planned: Activiteit[]; 
     planned.sort((a, b) => new Date(a.Aanvangstijd ?? 0).getTime() - new Date(b.Aanvangstijd ?? 0).getTime());
     return { planned, past };
 }
+/** ISO-datum (YYYY-MM-DD) van `days` dagen geleden, te gebruiken als OData `Aanvangstijd ge ...` filter */
+function isoDateDaysAgo(days: number): string {
+    return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+// De Tweede Kamer API staat maximaal $top=250 toe.
+const MAX_ACTIVITEITEN_TOP = 250;
 
 /** Agenda-overzicht: komende en eerdere Activiteiten, optioneel gefilterd op onderwerp */
 export async function getAgendaOverview(
     query?: string
   ): Promise<{ planned: MonitorItem[]; past: MonitorItem[]; apiOk: boolean }> {
-    const data = await getActiviteiten({ top: 80, search: query });
+    // Chronologisch (oplopend) vanaf een week terug opvragen, in plaats van aflopend zonder
+    // datumgrens: aflopend + geen ondergrens levert de allerverste toekomstige activiteiten op
+    // (soms al gepland tot een jaar vooruit), waardoor de eerstkomende weken werden overgeslagen.
+    const data = await getActiviteiten({
+                      top: MAX_ACTIVITEITEN_TOP,
+                      search: query,
+                      vanaf: isoDateDaysAgo(7),
+                      orderby: 'asc',
+        });
     const { planned, past } = splitPlannedPast(data.value);
     return {
           planned: planned.map((a) => activiteitToMonitorItem(a)),
-          past: past.map((a) => activiteitToMonitorItem(a)),
+          past: past.reverse().map((a) => activiteitToMonitorItem(a)),
           apiOk: data.value.length > 0,
     };
 }
@@ -1101,12 +1117,19 @@ export async function getAgendaOverview(
 export async function getDebateOverview(
     query?: string
   ): Promise<{ planned: MonitorItem[]; past: MonitorItem[]; apiOk: boolean }> {
-    const data = await getActiviteiten({ top: 100, search: query });
+    // Zelfde reden als getAgendaOverview: chronologisch vanaf een week terug, anders krijg je
+    // alleen de verst-vooruit-geplande activiteiten en missen de debatten van de komende weken.
+        const data = await getActiviteiten({
+                      top: MAX_ACTIVITEITEN_TOP,
+                      search: query,
+                      vanaf: isoDateDaysAgo(7),
+                      orderby: 'asc',
+        });
     const debates = data.value.filter((a) => (a.Soort ?? '').toLowerCase().includes('debat'));
     const { planned, past } = splitPlannedPast(debates);
     return {
           planned: planned.map((a) => activiteitToMonitorItem(a)),
-          past: past.map((a) => activiteitToMonitorItem(a)),
+          past: past.reverse().map((a) => activiteitToMonitorItem(a)),
           apiOk: data.value.length > 0,
     };
 }
@@ -1176,7 +1199,10 @@ export async function getMembersOverview(
 export async function getKamerkompasOverview() {
     const [activiteitenResp, motiesResp, brievenResp, fractiesResp, toezeggingenResp, reportsOverview] =
           await Promise.all([
-                  getActiviteiten({ top: 60 }),
+                  // Chronologisch vanaf 2 dagen terug (i.p.v. aflopend zonder ondergrens) zodat
+                  // "nu bezig" en "komende week" ook echt de eerstkomende activiteiten bevatten,
+                  // in plaats van de verst-vooruit-geplande activiteiten uit de hele dataset.
+              getActiviteiten({ top: 200, vanaf: isoDateDaysAgo(2), orderby: 'asc' }),
                   getMoties({ top: 6 }),
                   getKamerbrieven({ top: 6 }),
                   getFracties(),
