@@ -2,7 +2,8 @@ import Link from "next/link";
 import { FileText, Search } from "lucide-react";
 import { ApiStatusPill } from "@/components/api-status-pill";
 import { SaveButton } from "@/components/save-button";
-import { documentResourceUrl, getLettersOverview } from "@/lib/tk";
+import { documentResourceUrl } from "@/lib/tk";
+import { documentDbToMonitorItem, getKamerbrievenDb } from "@/lib/db";
 
 type KamerbrievenPageProps = {
   searchParams?: Promise<{ q?: string }>;
@@ -16,7 +17,8 @@ function stringMeta(meta: Record<string, unknown>, key: string) {
 export default async function KamerbrievenPage({ searchParams }: KamerbrievenPageProps) {
   const params = await searchParams;
   const query = params?.q?.trim() ?? "";
-  const letters = await getLettersOverview(query);
+  const documenten = await getKamerbrievenDb({ search: query || undefined });
+  const items = documenten.map(documentDbToMonitorItem);
 
   return (
     <main className="page-shell">
@@ -33,13 +35,13 @@ export default async function KamerbrievenPage({ searchParams }: KamerbrievenPag
       </section>
 
       <div className="result-count" aria-live="polite">
-        <strong>{letters.items.length}</strong>
+        <strong>{items.length}</strong>
         <span>{query ? `Kamerbrieven voor "${query}"` : "recente Kamerbrieven"}</span>
-        <ApiStatusPill apiOk={letters.apiOk} />
+        <ApiStatusPill apiOk={items.length > 0} />
       </div>
 
       <section className="result-list list-page">
-        {letters.items.map((item) => {
+        {items.map((item) => {
           const documentId = stringMeta(item.meta, "Id") ?? item.id;
           const resourceUrl = documentResourceUrl(documentId);
 
