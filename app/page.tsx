@@ -5,9 +5,25 @@ import { FactionSeatChart } from "@/components/faction-seat-chart";
 import { MonitorResultCard } from "@/components/monitor-result-card";
 import { VoteCard } from "@/components/vote-card";
 import { getKamerkompasOverview, reportResourceUrl } from "@/lib/tk";
+import {
+  besluitDbToVoteSummary,
+  documentDbToMonitorItem,
+  getBesluitenMetStemmingenDb,
+  getKamerbrievenDb,
+  getToezeggingenDb,
+  toezeggingDbToMonitorItem,
+} from "@/lib/db";
 
 export default async function HomePage() {
-  const overview = await getKamerkompasOverview();
+  const [overview, voteEntries, kamerbrieven, toezeggingen] = await Promise.all([
+    getKamerkompasOverview(),
+    getBesluitenMetStemmingenDb({ limit: 6 }),
+    getKamerbrievenDb({ limit: 6 }),
+    getToezeggingenDb({ limit: 6 }),
+  ]);
+  const votes = voteEntries.map(besluitDbToVoteSummary);
+  const letters = kamerbrieven.map(documentDbToMonitorItem);
+  const pledges = toezeggingen.map(toezeggingDbToMonitorItem);
   const activeReport = overview.reports[0];
   const activeReportUrl = reportResourceUrl(activeReport?.Id);
 
@@ -89,7 +105,7 @@ export default async function HomePage() {
             <Link className="text-link" href="/stemmingen">Alles</Link>
           </div>
           <div className="result-list">
-            {overview.votes.map((vote) => <VoteCard vote={vote} key={vote.id} />)}
+            {votes.map((vote) => <VoteCard vote={vote} key={vote.id} />)}
           </div>
         </div>
 
@@ -140,7 +156,7 @@ export default async function HomePage() {
             <Link className="text-link" href="/kamerbrieven">Alle brieven</Link>
           </div>
           <div className="result-list">
-            {overview.letters.map((item) => <MonitorResultCard compact item={item} key={`${item.kind}-${item.id}`} />)}
+            {letters.map((item) => <MonitorResultCard compact item={item} key={`${item.kind}-${item.id}`} />)}
           </div>
         </div>
         <div>
@@ -152,7 +168,7 @@ export default async function HomePage() {
             <Bell size={20} aria-hidden="true" />
           </div>
           <div className="result-list">
-            {overview.pledges.map((item) => <MonitorResultCard compact item={item} key={`${item.kind}-${item.id}`} />)}
+            {pledges.map((item) => <MonitorResultCard compact item={item} key={`${item.kind}-${item.id}`} />)}
           </div>
         </div>
       </section>
