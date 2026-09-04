@@ -762,6 +762,14 @@ export function formatDateShort(iso?: string): string {
     });
 }
 
+export function formatTime(iso?: string): string {
+  if (!iso) return '';
+  return new Date(iso).toLocaleTimeString('nl-NL', {
+        hour: '2-digit',
+        minute: '2-digit',
+  });
+}
+
 function uniqueById<T extends { id: string }>(arr: T[]): T[] {
     const seen = new Set<string>();
     return arr.filter((x) => {
