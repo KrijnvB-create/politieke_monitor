@@ -8,12 +8,14 @@
  * relationele tabellen, zodat een debat écht zijn moties en deelnemers kan
  * tonen en een Kamerlid écht zijn debatten, commissies en moties.
  *
- * Nog niet in dit datamodel gesynchroniseerd (blijven op lib/tk.ts / de live
- * API): Document (kamerbrieven), Besluit/Stemming (stemmingen), Toezegging,
- * Verslag. Die pagina's zijn dus bewust ongemoeid gelaten.
+ * Sinds de uitbreiding met Document/Besluit/Stemming/Toezegging staan ook
+ * kamerbrieven, stemmingen en toezeggingen in dit model. Nog niet
+ * gesynchroniseerd (blijft op lib/tk.ts / de live API): Verslag, en alle
+ * lijst-pagina's die nog niet zijn omgebouwd (zie project-statusdocument).
  */
 
 import { createClient } from './supabase/server';
+import { formatDate, type MonitorItem } from './tk';
 
 // ─── Rijtypes (spiegelen public schema in tk_data_model migration) ──────────
 
@@ -321,4 +323,277 @@ export async function getCommissieDb(id: string): Promise<CommissieDetail | null
     .sort((a, b) => (a.persoon.achternaam ?? '').localeCompare(b.persoon.achternaam ?? ''));
 
   return { commissie: commissie as DbCommissie, leden };
+}
+
+// ─── Documenten (kamerbrieven) ────────────────────────────────────────────────
+
+export interface DbDocument {
+  id: string;
+  soort: string | null;
+  titel: string | null;
+  onderwerp: string | null;
+  alias: string | null;
+  datum: string | null;
+  status: string | null;
+  vergaderjaar: string | null;
+  volgnummer: number | null;
+  nummer: string | null;
+  aanhangselnummer: string | null;
+  kamerstukdossier_id: string | null;
+  verwijderd: boolean;
+}
+
+/** Kamerbrieven (Document met Soort die "Brief" bevat), nieuwste eerst */
+export async function getKamerbrievenDb(opts?: { search?: string; limit?: number }): Promise<DbDocument[]> {
+  const supabase = await createClient();
+  let query = supabase
+    .from('tk_documenten')
+    .select('*')
+    .eq('verwijderd', false)
+    .ilike('soort', '%Brief%')
+    .order('datum', { ascending: false, nullsFirst: false })
+    .limit(opts?.limit ?? 30);
+
+  if (opts?.search) {
+    const q = opts.search.replace(/[%_]/g, (m) => `\\${m}`);
+    query = query.or(`titel.ilike.%${q}%,onderwerp.ilike.%${q}%`);
+  }
+
+  const { data } = await query.returns<DbDocument[]>();
+  return data ?? [];
+}
+
+/** Eén document (kamerbrief) op id */
+export async function getKamerbriefDb(id: string): Promise<DbDocument | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from('tk_documenten').select('*').eq('id', id).maybeSingle();
+  if (error || !data) return null;
+  return data as DbDocument;
+}
+
+/** Zet een DbDocument om naar de generieke MonitorItem-kaartvorm (voor list/detail UI) */
+export function documentDbToMonitorItem(doc: DbDocument): MonitorItem {
+  return {
+    kind: 'kamerbrief',
+    id: doc.id,
+    eyebrow: doc.soort ?? 'Document',
+    title: doc.titel ?? doc.onderwerp ?? doc.soort ?? 'Document',
+    date: formatDate(doc.datum ?? undefined),
+    status: doc.status ?? undefined,
+    description: doc.onderwerp ?? undefined,
+    meta: {
+      Id: doc.id,
+      Soort: doc.soort,
+      Titel: doc.titel,
+      Onderwerp: doc.onderwerp,
+      Alias: doc.alias,
+      Datum: doc.datum,
+      Status: doc.status,
+      Vergaderjaar: doc.vergaderjaar,
+      Volgnummer: doc.volgnummer,
+      Nummer: doc.nummer,
+      Aanhangselnummer: doc.aanhangselnummer,
+    },
+  };
+}
+
+// ─── Besluiten + Stemmingen ────────────────────────────────────────────────────
+
+export interface DbBesluit {
+  id: string;
+  soort: string | null;
+  status: string | null;
+  opmerking: string | null;
+  tekst: string | null;
+  gewijzigd_op: string | null;
+  verwijderd: boolean;
+}
+
+export interface DbStemming {
+  id: string;
+  besluit_id: string;
+  soort: string | null;
+  vergissing: boolean;
+  fractie_grootte: number | null;
+  fractie: DbFractie | null;
+}
+
+export interface VoteSummaryDb {
+  besluit: DbBesluit;
+  zaak: DbZaak | null;
+  stemmingen: DbStemming[];
+}
+
+interface BesluitZaakRow {
+  besluit_id: string;
+  zaak: DbZaak | null;
+}
+
+interface StemmingRow {
+  id: string;
+  besluit_id: string;
+  soort: string | null;
+  vergissing: boolean;
+  fractie_grootte: number | null;
+  fractie: DbFractie | null;
+}
+
+/** Besluiten met hun Stemmingen en onderliggende Zaak (voor titel/datum) */
+export async function getBesluitenMetStemmingenDb(opts?: {
+  limit?: number;
+  besluitId?: string;
+}): Promise<VoteSummaryDb[]> {
+  const supabase = await createClient();
+
+  let besluitQuery = supabase.from('tk_besluiten').select('*').eq('verwijderd', false);
+  besluitQuery = opts?.besluitId
+    ? besluitQuery.eq('id', opts.besluitId)
+    : besluitQuery.order('gewijzigd_op', { ascending: false, nullsFirst: false }).limit(opts?.limit ?? 25);
+
+  const { data: besluitenData } = await besluitQuery.returns<DbBesluit[]>();
+  const besluiten = besluitenData ?? [];
+  if (besluiten.length === 0) return [];
+
+  const besluitIds = besluiten.map((b) => b.id);
+
+  const [{ data: zaakLinks }, { data: stemmingRows }] = await Promise.all([
+    supabase
+      .from('tk_besluit_zaken')
+      .select('besluit_id, zaak:tk_zaken(*)')
+      .in('besluit_id', besluitIds)
+      .returns<BesluitZaakRow[]>(),
+    supabase
+      .from('tk_stemmingen')
+      .select('id, besluit_id, soort, vergissing, fractie_grootte, fractie:tk_fracties(*)')
+      .in('besluit_id', besluitIds)
+      .eq('verwijderd', false)
+      .returns<StemmingRow[]>(),
+  ]);
+
+  const zaakByBesluit = new Map<string, DbZaak>();
+  for (const row of zaakLinks ?? []) {
+    if (row.zaak && !row.zaak.verwijderd && !zaakByBesluit.has(row.besluit_id)) {
+      zaakByBesluit.set(row.besluit_id, row.zaak);
+    }
+  }
+
+  const stemmingenByBesluit = new Map<string, DbStemming[]>();
+  for (const row of stemmingRows ?? []) {
+    const list = stemmingenByBesluit.get(row.besluit_id) ?? [];
+    list.push(row);
+    stemmingenByBesluit.set(row.besluit_id, list);
+  }
+
+  const results = besluiten
+    .map((besluit) => ({
+      besluit,
+      zaak: zaakByBesluit.get(besluit.id) ?? null,
+      stemmingen: stemmingenByBesluit.get(besluit.id) ?? [],
+    }))
+    .filter((r) => r.stemmingen.length > 0);
+
+  if (!opts?.besluitId) {
+    results.sort(
+      (a, b) =>
+        new Date(b.zaak?.gestart_op ?? b.besluit.gewijzigd_op ?? 0).getTime() -
+        new Date(a.zaak?.gestart_op ?? a.besluit.gewijzigd_op ?? 0).getTime()
+    );
+  }
+
+  return results;
+}
+
+/** Uniforme kaart-vorm voor een stemming, zelfde vorm als VoteSummary in lib/tk.ts */
+export function besluitDbToVoteSummary(entry: VoteSummaryDb): {
+  id: string;
+  title: string;
+  date: string;
+  result: string;
+  voor: number;
+  tegen: number;
+  onthouden: number;
+  total: number;
+  lines: { faction: string; vote: string }[];
+  meta: Record<string, unknown>;
+} {
+  const { besluit, zaak, stemmingen } = entry;
+  let voor = 0;
+  let tegen = 0;
+  let onthouden = 0;
+  const lines = stemmingen.map((s) => {
+    const soort = (s.soort ?? '').toLowerCase();
+    const weight = s.fractie_grootte ?? 1;
+    if (soort.includes('voor')) voor += weight;
+    else if (soort.includes('tegen')) tegen += weight;
+    else onthouden += weight;
+    return { faction: s.fractie?.afkorting ?? s.fractie?.naam_nl ?? 'Onbekend', vote: s.soort ?? 'Onbekend' };
+  });
+  const total = voor + tegen + onthouden;
+  const result = besluit.status ?? besluit.soort ?? (voor >= tegen ? 'Aangenomen' : 'Verworpen');
+
+  return {
+    id: besluit.id,
+    title: zaak?.titel ?? zaak?.onderwerp ?? besluit.tekst ?? 'Stemming',
+    date: formatDate(zaak?.gestart_op ?? besluit.gewijzigd_op ?? undefined),
+    result,
+    voor,
+    tegen,
+    onthouden,
+    total,
+    lines,
+    meta: { besluitId: besluit.id, zaakId: zaak?.id, zaak: zaak?.titel, opmerking: besluit.opmerking },
+  };
+}
+
+// ─── Toezeggingen ─────────────────────────────────────────────────────────────
+
+export interface DbToezegging {
+  id: string;
+  nummer: string | null;
+  tekst: string | null;
+  status: string | null;
+  aanmaakdatum: string | null;
+  datum_nakoming: string | null;
+  ministerie: string | null;
+  bewindspersoon_naam: string | null;
+  activiteit_nummer: string | null;
+  verwijderd: boolean;
+}
+
+export async function getToezeggingenDb(opts?: { limit?: number }): Promise<DbToezegging[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('tk_toezeggingen')
+    .select('*')
+    .eq('verwijderd', false)
+    .order('aanmaakdatum', { ascending: false, nullsFirst: false })
+    .limit(opts?.limit ?? 6)
+    .returns<DbToezegging[]>();
+  return data ?? [];
+}
+
+function truncateText(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+export function toezeggingDbToMonitorItem(t: DbToezegging): MonitorItem {
+  return {
+    kind: 'activiteit',
+    id: t.id,
+    eyebrow: 'Toezegging',
+    title: t.tekst ? truncateText(t.tekst, 140) : 'Toezegging',
+    date: formatDate(t.aanmaakdatum ?? undefined),
+    status: t.status ?? undefined,
+    description: [t.bewindspersoon_naam, t.ministerie].filter(Boolean).join(' · ') || undefined,
+    meta: {
+      Id: t.id,
+      Nummer: t.nummer,
+      Status: t.status,
+      Aanmaakdatum: t.aanmaakdatum,
+      DatumNakoming: t.datum_nakoming,
+      Ministerie: t.ministerie,
+      BewindspersoonNaam: t.bewindspersoon_naam,
+      ActiviteitNummer: t.activiteit_nummer,
+    },
+  };
 }
