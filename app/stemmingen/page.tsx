@@ -1,10 +1,11 @@
 import { Vote } from "lucide-react";
 import { ApiStatusPill } from "@/components/api-status-pill";
 import { VoteCard } from "@/components/vote-card";
-import { getVotesOverview } from "@/lib/tk";
+import { besluitDbToVoteSummary, getBesluitenMetStemmingenDb } from "@/lib/db";
 
 export default async function StemmingenPage() {
-  const votes = await getVotesOverview();
+  const entries = await getBesluitenMetStemmingenDb({ limit: 25 });
+  const votes = entries.map(besluitDbToVoteSummary);
 
   return (
     <main className="page-shell">
@@ -17,13 +18,13 @@ export default async function StemmingenPage() {
           <Vote size={22} aria-hidden="true" />
           <div>
             <strong>Bronstatus</strong>
-            <ApiStatusPill apiOk={votes.apiOk} />
+            <ApiStatusPill apiOk={votes.length > 0} />
           </div>
         </div>
       </section>
 
       <section className="result-list list-page">
-        {votes.items.map((vote) => (
+        {votes.map((vote) => (
           <VoteCard vote={vote} key={vote.id} />
         ))}
       </section>
