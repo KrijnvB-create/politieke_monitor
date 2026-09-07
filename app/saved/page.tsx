@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { RemoveSavedItemButton } from "@/components/remove-saved-item-button";
 import { savedKindLabel, type SavedItemRecord } from "@/lib/saved-items";
 import { createClient } from "@/lib/supabase/server";
 
@@ -44,7 +45,10 @@ export default async function SavedPage() {
                 <h2>{item.label ?? item.ref_id}</h2>
                 <p>{new Date(item.created_at).toLocaleString("nl-NL")}</p>
               </div>
-              <span>{item.ref_id}</span>
+              <div className="saved-row-actions">
+                <span>{item.ref_id}</span>
+                <RemoveSavedItemButton id={item.id} />
+              </div>
             </article>
           ))}
         </section>
