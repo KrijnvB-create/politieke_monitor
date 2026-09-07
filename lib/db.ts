@@ -229,15 +229,30 @@ export interface ActiviteitDeelnemer {
   volgorde: number | null;
 }
 
+export interface MotieUitslag {
+  besluitId: string;
+  result: string;
+  voor: number;
+  tegen: number;
+  onthouden: number;
+}
+
+export interface MotieMetUitslag extends DbZaak {
+  uitslag: MotieUitslag | null;
+}
+
 export interface ActiviteitDetail {
   activiteit: DbActiviteit;
   voortouwcommissie: DbCommissie | null;
-  moties: DbZaak[];
+  moties: MotieMetUitslag[];
   overigeZaken: DbZaak[];
   deelnemers: ActiviteitDeelnemer[];
 }
 
-/** Eén debat/activiteit compleet met gelinkte zaken (moties) en deelnemers */
+/** Eén debat/activiteit compleet met gelinkte zaken (moties, mét stemuitslag
+ * zodra bekend) en deelnemers. Moties komen zowel via de rechtstreekse
+ * Activiteit->Zaak-koppeling (vaak leeg) als via Agendapunt->Zaak (de route
+ * die de Tweede Kamer zelf gebruikt en veel completer is). */
 export async function getActiviteitDb(id: string): Promise<ActiviteitDetail | null> {
   const supabase = await createClient();
 
@@ -253,8 +268,9 @@ export async function getActiviteitDb(id: string): Promise<ActiviteitDetail | nu
     voortouwcommissie: DbCommissie | null;
   };
 
-  const [{ data: zaakLinks }, { data: deelnemerRows }] = await Promise.all([
+  const [{ data: zaakLinks }, { data: agendapuntRows }, { data: deelnemerRows }] = await Promise.all([
     supabase.from('tk_activiteit_zaken').select('zaak:tk_zaken(*)').eq('activiteit_id', id).returns<{ zaak: DbZaak | null }[]>(),
+    supabase.from('tk_agendapunten').select('id').eq('activiteit_id', id).returns<{ id: string }[]>(),
     supabase
       .from('tk_activiteit_deelnemers')
       .select('relatie, functie, actor_naam, actor_fractie, volgorde, persoon:tk_personen(*), fractie:tk_fracties(*), commissie:tk_commissies(*)')
@@ -264,13 +280,82 @@ export async function getActiviteitDb(id: string): Promise<ActiviteitDetail | nu
       .returns<ActiviteitDeelnemer[]>(),
   ]);
 
+  const agendapuntIds = (agendapuntRows ?? []).map((r) => r.id);
+  const { data: agendapuntZaakLinks } = agendapuntIds.length
+    ? await supabase
+        .from('tk_agendapunt_zaken')
+        .select('zaak:tk_zaken(*)')
+        .in('agendapunt_id', agendapuntIds)
+        .returns<{ zaak: DbZaak | null }[]>()
+    : { data: [] as { zaak: DbZaak | null }[] };
+
   const zaken = uniqueById(
-    (zaakLinks ?? [])
+    [...(zaakLinks ?? []), ...(agendapuntZaakLinks ?? [])]
       .map((r) => r.zaak)
       .filter((z): z is DbZaak => !!z && !z.verwijderd)
   );
-  const moties = zaken.filter((z) => z.soort === 'Motie');
+  const motieZaken = zaken.filter((z) => z.soort === 'Motie');
   const overigeZaken = zaken.filter((z) => z.soort !== 'Motie');
+
+  // Stemuitslag per motie ophalen via tk_besluit_zaken -> tk_besluiten -> tk_stemmingen.
+  const motieIds = motieZaken.map((z) => z.id);
+  const uitslagByMotie = new Map<string, MotieUitslag>();
+  if (motieIds.length > 0) {
+    const { data: besluitZaakRows } = await supabase
+      .from('tk_besluit_zaken')
+      .select('zaak_id, besluit:tk_besluiten(*)')
+      .in('zaak_id', motieIds)
+      .returns<{ zaak_id: string; besluit: DbBesluit | null }[]>();
+
+    const besluitIds = uniqueById(
+      (besluitZaakRows ?? []).map((r) => r.besluit).filter((b): b is DbBesluit => !!b && !b.verwijderd)
+    ).map((b) => b.id);
+
+    const { data: stemmingRows } = besluitIds.length
+      ? await supabase
+          .from('tk_stemmingen')
+          .select('besluit_id, soort, fractie_grootte')
+          .in('besluit_id', besluitIds)
+          .eq('verwijderd', false)
+          .returns<{ besluit_id: string; soort: string | null; fractie_grootte: number | null }[]>()
+      : { data: [] as { besluit_id: string; soort: string | null; fractie_grootte: number | null }[] };
+
+    const stemmingenByBesluit = new Map<string, { soort: string | null; fractie_grootte: number | null }[]>();
+    for (const s of stemmingRows ?? []) {
+      const list = stemmingenByBesluit.get(s.besluit_id) ?? [];
+      list.push(s);
+      stemmingenByBesluit.set(s.besluit_id, list);
+    }
+
+    for (const row of besluitZaakRows ?? []) {
+      if (!row.besluit || row.besluit.verwijderd) continue;
+      const stemmingen = stemmingenByBesluit.get(row.besluit.id) ?? [];
+      if (stemmingen.length === 0 && !row.besluit.status && !row.besluit.soort) continue;
+      let voor = 0;
+      let tegen = 0;
+      let onthouden = 0;
+      for (const s of stemmingen) {
+        const soort = (s.soort ?? '').toLowerCase();
+        const weight = s.fractie_grootte ?? 1;
+        if (soort.includes('voor')) voor += weight;
+        else if (soort.includes('tegen')) tegen += weight;
+        else onthouden += weight;
+      }
+      // Bij een bestaande entry (motie kan aan meerdere besluiten hangen) de
+      // meest informatieve houden: er is een uitslag zodra er stemmen zijn.
+      const existing = uitslagByMotie.get(row.zaak_id);
+      if (existing && existing.voor + existing.tegen + existing.onthouden > 0 && stemmingen.length === 0) continue;
+      uitslagByMotie.set(row.zaak_id, {
+        besluitId: row.besluit.id,
+        result: row.besluit.status ?? row.besluit.soort ?? (voor >= tegen && voor + tegen > 0 ? 'Aangenomen' : 'Verworpen'),
+        voor,
+        tegen,
+        onthouden,
+      });
+    }
+  }
+
+  const moties: MotieMetUitslag[] = motieZaken.map((z) => ({ ...z, uitslag: uitslagByMotie.get(z.id) ?? null }));
 
   // Dedupe deelnemers op persoon (dezelfde persoon kan meerdere keren voorkomen,
   // bv. als spreker én als aanvrager), val terug op bewindspersonen zonder Persoon-record.
