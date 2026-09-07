@@ -1,5 +1,6 @@
 import { DetailPanel, NotFoundDetail } from "@/components/detail-panel";
-import { documentResourceUrl, getLetterItemById } from "@/lib/tk";
+import { documentResourceUrl } from "@/lib/tk";
+import { documentDbToMonitorItem, getKamerbriefDb } from "@/lib/db";
 
 type KamerbriefDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -8,7 +9,8 @@ type KamerbriefDetailPageProps = {
 export default async function KamerbriefDetailPage({ params }: KamerbriefDetailPageProps) {
   const { id } = await params;
   const decodedId = decodeURIComponent(id);
-  const item = await getLetterItemById(decodedId);
+  const doc = await getKamerbriefDb(decodedId);
+  const item = doc ? documentDbToMonitorItem(doc) : null;
 
   if (!item) {
     return <NotFoundDetail title="Kamerbrief niet gevonden" backHref="/kamerbrieven" backLabel="Terug naar Kamerbrieven" />;

@@ -103,11 +103,31 @@ export default async function AgendaDetailPage({ params }: AgendaDetailPageProps
                   <Link href={zaakHref(z)} className="text-sm font-medium text-slate-900 hover:text-blue-700">
                     {z.titel ?? z.onderwerp ?? "Motie"}
                   </Link>
-                  {z.huidige_behandelstatus ?? z.status ? (
-                    <span className="text-xs text-slate-500 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded whitespace-nowrap">
-                      {z.huidige_behandelstatus ?? z.status}
-                    </span>
-                  ) : null}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {z.kabinetsappreciatie ? (
+                      <span className="text-xs text-slate-500 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded whitespace-nowrap">
+                        Kabinet: {z.kabinetsappreciatie}
+                      </span>
+                    ) : null}
+                    {z.uitslag ? (
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded whitespace-nowrap border ${
+                          z.uitslag.result.toLowerCase().includes("aangenomen")
+                            ? "text-green-700 bg-green-50 border-green-200"
+                            : z.uitslag.result.toLowerCase().includes("verworpen")
+                              ? "text-red-700 bg-red-50 border-red-200"
+                              : "text-slate-500 bg-slate-50 border-slate-200"
+                        }`}
+                      >
+                        {z.uitslag.result}
+                        {z.uitslag.voor + z.uitslag.tegen > 0 ? ` (${z.uitslag.voor}-${z.uitslag.tegen})` : ""}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-400 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded whitespace-nowrap">
+                        Nog niet gestemd
+                      </span>
+                    )}
+                  </div>
                 </div>
                 {z.onderwerp && z.onderwerp !== z.titel ? (
                   <p className="text-xs text-slate-500 mt-1 leading-relaxed">{z.onderwerp}</p>
