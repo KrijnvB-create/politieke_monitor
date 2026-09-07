@@ -652,7 +652,13 @@ p {
   margin-bottom: 0;
 }
 
-.saved-row > span {
+.saved-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.saved-row-actions span {
   max-width: 280px;
   overflow: hidden;
   color: var(--muted);
@@ -660,6 +666,11 @@ p {
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.remove-saved-button:hover {
+  color: var(--red);
+  border-color: var(--red);
 }
 
 .saved-kind {
