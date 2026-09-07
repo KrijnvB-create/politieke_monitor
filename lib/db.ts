@@ -530,10 +530,17 @@ export async function getBesluitenMetStemmingenDb(opts?: {
 }): Promise<VoteSummaryDb[]> {
   const supabase = await createClient();
 
+  // Alleen Besluit-records die daadwerkelijk een stemuitslag hebben: andere
+  // "Stemmen - ..." varianten (aangehouden, ingetrokken, zonder stemming
+  // aannemen) hebben geen tk_stemmingen-rijen en overheersen anders de meest
+  // recent gewijzigde besluiten, waardoor deze lijst leeg leek.
   let besluitQuery = supabase.from('tk_besluiten').select('*').eq('verwijderd', false);
   besluitQuery = opts?.besluitId
     ? besluitQuery.eq('id', opts.besluitId)
-    : besluitQuery.order('gewijzigd_op', { ascending: false, nullsFirst: false }).limit(opts?.limit ?? 25);
+    : besluitQuery
+        .in('soort', ['Stemmen - aangenomen', 'Stemmen - verworpen', 'Stemmen - niet aangenomen'])
+        .order('gewijzigd_op', { ascending: false, nullsFirst: false })
+        .limit(opts?.limit ?? 25);
 
   const { data: besluitenData } = await besluitQuery.returns<DbBesluit[]>();
   const besluiten = besluitenData ?? [];
