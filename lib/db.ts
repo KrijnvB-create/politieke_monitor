@@ -5,8 +5,8 @@
  *
  * Dit is de "gelinkte" laag: in plaats van losse live-calls naar de Tweede
  * Kamer OData API te doen (zie lib/tk.ts), lezen deze functies uit de eigen
- * relationele tabellen, zodat een debat écht zijn moties en deelnemers kan
- * tonen en een Kamerlid écht zijn debatten, commissies en moties.
+ * relationele tabellen, zodat een debat echt zijn moties en deelnemers kan
+ * tonen en een Kamerlid echt zijn debatten, commissies en moties.
  *
  * Sinds de uitbreiding met Document/Besluit/Stemming/Toezegging staan ook
  * kamerbrieven, stemmingen en toezeggingen in dit model. Nog niet
@@ -17,7 +17,7 @@
 import { createClient } from './supabase/server';
 import { formatDate, type MonitorItem } from './tk';
 
-// ─── Rijtypes (spiegelen public schema in tk_data_model migration) ──────────
+// --- Rijtypes (spiegelen public schema in tk_data_model migration) ----------
 
 export interface DbPersoon {
   id: string;
@@ -82,7 +82,7 @@ export interface DbActiviteit {
   verwijderd: boolean;
 }
 
-// ─── Utils ───────────────────────────────────────────────────────────────────
+// --- Utils -------------------------------------------------------------------
 
 export function persoonNaamDb(p: Pick<DbPersoon, 'roepnaam' | 'voornamen' | 'tussenvoegsel' | 'achternaam'>): string {
   const parts = [p.roepnaam ?? p.voornamen, p.tussenvoegsel, p.achternaam].filter(Boolean);
@@ -102,7 +102,7 @@ function uniqueById<T extends { id: string }>(items: T[]): T[] {
   });
 }
 
-// ─── Kamerlid ────────────────────────────────────────────────────────────────
+// --- Kamerlid ----------------------------------------------------------------
 
 export interface PersoonMetFractie extends DbPersoon {
   fractie: DbFractie | null;
@@ -216,7 +216,7 @@ export async function getCommissiesVanPersoonDb(
   return uniqueById(rows).sort((a, b) => (a.naam_nl ?? '').localeCompare(b.naam_nl ?? ''));
 }
 
-// ─── Activiteit / debat ──────────────────────────────────────────────────────
+// --- Activiteit / debat ------------------------------------------------------
 
 export interface ActiviteitDeelnemer {
   persoon: DbPersoon | null;
@@ -249,7 +249,7 @@ export interface ActiviteitDetail {
   deelnemers: ActiviteitDeelnemer[];
 }
 
-/** Eén debat/activiteit compleet met gelinkte zaken (moties, mét stemuitslag
+/** Een debat/activiteit compleet met gelinkte zaken (moties, met stemuitslag
  * zodra bekend) en deelnemers. Moties komen zowel via de rechtstreekse
  * Activiteit->Zaak-koppeling (vaak leeg) als via Agendapunt->Zaak (de route
  * die de Tweede Kamer zelf gebruikt en veel completer is). */
@@ -358,7 +358,7 @@ export async function getActiviteitDb(id: string): Promise<ActiviteitDetail | nu
   const moties: MotieMetUitslag[] = motieZaken.map((z) => ({ ...z, uitslag: uitslagByMotie.get(z.id) ?? null }));
 
   // Dedupe deelnemers op persoon (dezelfde persoon kan meerdere keren voorkomen,
-  // bv. als spreker én als aanvrager), val terug op bewindspersonen zonder Persoon-record.
+  // bv. als spreker en als aanvrager), val terug op bewindspersonen zonder Persoon-record.
   const seenPersonIds = new Set<string>();
   const deelnemers = (deelnemerRows ?? []).filter((d) => {
     if (!d.persoon) return true;
@@ -370,14 +370,14 @@ export async function getActiviteitDb(id: string): Promise<ActiviteitDetail | nu
   return { activiteit: activiteit as DbActiviteit, voortouwcommissie, moties, overigeZaken, deelnemers };
 }
 
-// ─── Commissie ───────────────────────────────────────────────────────────────
+// --- Commissie ---------------------------------------------------------------
 
 export interface CommissieDetail {
   commissie: DbCommissie;
   leden: { persoon: DbPersoon; functie: string | null }[];
 }
 
-/** Eén commissie compleet met haar huidige leden */
+/** Een commissie compleet met haar huidige leden */
 export async function getCommissieDb(id: string): Promise<CommissieDetail | null> {
   const supabase = await createClient();
 
@@ -410,7 +410,7 @@ export async function getCommissieDb(id: string): Promise<CommissieDetail | null
   return { commissie: commissie as DbCommissie, leden };
 }
 
-// ─── Documenten (kamerbrieven) ────────────────────────────────────────────────
+// --- Documenten (kamerbrieven) ------------------------------------------------
 
 export interface DbDocument {
   id: string;
@@ -448,7 +448,7 @@ export async function getKamerbrievenDb(opts?: { search?: string; limit?: number
   return data ?? [];
 }
 
-/** Eén document (kamerbrief) op id */
+/** Een document (kamerbrief) op id */
 export async function getKamerbriefDb(id: string): Promise<DbDocument | null> {
   const supabase = await createClient();
   const { data, error } = await supabase.from('tk_documenten').select('*').eq('id', id).maybeSingle();
@@ -482,7 +482,7 @@ export function documentDbToMonitorItem(doc: DbDocument): MonitorItem {
   };
 }
 
-// ─── Besluiten + Stemmingen ────────────────────────────────────────────────────
+// --- Besluiten + Stemmingen ----------------------------------------------------
 
 export interface DbBesluit {
   id: string;
@@ -637,7 +637,7 @@ export function besluitDbToVoteSummary(entry: VoteSummaryDb): {
   };
 }
 
-// ─── Toezeggingen ─────────────────────────────────────────────────────────────
+// --- Toezeggingen -------------------------------------------------------------
 
 export interface DbToezegging {
   id: string;
@@ -665,7 +665,7 @@ export async function getToezeggingenDb(opts?: { limit?: number }): Promise<DbTo
 }
 
 function truncateText(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+  return text.length > max ? `${text.slice(0, max - 1)}...` : text;
 }
 
 export function toezeggingDbToMonitorItem(t: DbToezegging): MonitorItem {
@@ -676,7 +676,7 @@ export function toezeggingDbToMonitorItem(t: DbToezegging): MonitorItem {
     title: t.tekst ? truncateText(t.tekst, 140) : 'Toezegging',
     date: formatDate(t.aanmaakdatum ?? undefined),
     status: t.status ?? undefined,
-    description: [t.bewindspersoon_naam, t.ministerie].filter(Boolean).join(' · ') || undefined,
+    description: [t.bewindspersoon_naam, t.ministerie].filter(Boolean).join(' - ') || undefined,
     meta: {
       Id: t.id,
       Nummer: t.nummer,
@@ -688,4 +688,78 @@ export function toezeggingDbToMonitorItem(t: DbToezegging): MonitorItem {
       ActiviteitNummer: t.activiteit_nummer,
     },
   };
+}
+
+// --- Debat-detailpagina: AI-samenvatting, toezeggingen en gerelateerde debatten --
+
+export interface DbSamenvatting {
+  activiteit_id: string;
+  korte_samenvatting: string | null;
+  uitgebreide_analyse: string | null;
+  onderwerpen: string[] | null;
+  model: string | null;
+  gegenereerd_op: string | null;
+}
+
+/** AI-samenvatting van het woordelijk verslag voor deze activiteit, indien al gegenereerd. */
+export async function getSamenvattingVoorActiviteitDb(activiteitId: string): Promise<DbSamenvatting | null> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('tk_debat_samenvattingen')
+    .select('activiteit_id, korte_samenvatting, uitgebreide_analyse, onderwerpen, model, gegenereerd_op')
+    .eq('activiteit_id', activiteitId)
+    .maybeSingle();
+  return (data as DbSamenvatting | null) ?? null;
+}
+
+/** Toezeggingen die bij deze activiteit horen (gekoppeld op het Kamer-nummer van de activiteit). */
+export async function getToezeggingenVoorActiviteitDb(activiteitNummer: string | null): Promise<DbToezegging[]> {
+  if (!activiteitNummer) return [];
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('tk_toezeggingen')
+    .select('*')
+    .eq('activiteit_nummer', activiteitNummer)
+    .eq('verwijderd', false)
+    .order('aanmaakdatum', { ascending: false, nullsFirst: false })
+    .returns<DbToezegging[]>();
+  return data ?? [];
+}
+
+interface ActiviteitZaakRow {
+  activiteit: DbActiviteit | null;
+}
+
+/** Eerdere activiteiten die zaken delen met hetzelfde dossier als deze activiteit. */
+export async function getGerelateerdeActiviteitenDb(
+  dossierId: string,
+  excludeActiviteitId: string,
+  opts?: { limit?: number }
+): Promise<DbActiviteit[]> {
+  const supabase = await createClient();
+
+  const { data: zaakRows } = await supabase
+    .from('tk_zaken')
+    .select('id')
+    .eq('kamerstukdossier_id', dossierId)
+    .eq('verwijderd', false)
+    .returns<{ id: string }[]>();
+
+  const zaakIds = (zaakRows ?? []).map((z) => z.id);
+  if (zaakIds.length === 0) return [];
+
+  const { data } = await supabase
+    .from('tk_activiteit_zaken')
+    .select('activiteit:tk_activiteiten(*)')
+    .in('zaak_id', zaakIds)
+    .returns<ActiviteitZaakRow[]>();
+
+  const activiteiten = uniqueById(
+    (data ?? [])
+      .map((r) => r.activiteit)
+      .filter((a): a is DbActiviteit => !!a && !a.verwijderd && a.id !== excludeActiviteitId)
+  );
+
+  activiteiten.sort((a, b) => new Date(b.aanvangstijd ?? 0).getTime() - new Date(a.aanvangstijd ?? 0).getTime());
+  return activiteiten.slice(0, opts?.limit ?? 3);
 }
