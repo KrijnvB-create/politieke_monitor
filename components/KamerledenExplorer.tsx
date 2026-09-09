@@ -87,7 +87,7 @@ export function KamerledenExplorer({ items }: { items: MonitorItem[] }) {
         const lastB = b.item.title.split(" ").slice(-1)[0] ?? "";
         return lastA.localeCompare(lastB);
       });
-      return [{ key: "Alle leden op naam", plain: true, list }];
+      return list.length ? [{ key: "Alle leden op naam", plain: true, list }] : [];
     }
     list.sort((a, b) => a.fractie.localeCompare(b.fractie) || a.item.title.localeCompare(b.item.title));
     const groups: { key: string; plain: boolean; list: typeof list }[] = [];
