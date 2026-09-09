@@ -327,10 +327,17 @@ export async function getActiviteitDb(id: string): Promise<ActiviteitDetail | nu
       stemmingenByBesluit.set(s.besluit_id, list);
     }
 
+    // Een Besluit is alleen een echte stemuitslag als het Soort een afgeronde
+    // stemming beschrijft (niet "Voorstel"/"Besluit"/"Ingediend"/"Stemmen -
+    // aangehouden", dat zijn tussenstappen) of als er daadwerkelijk Stemmingen
+    // aan hangen. Anders lijkt elke ingediende motie al "gestemd".
+    const STEM_RESULT_SOORTEN = new Set(['Stemmen - aangenomen', 'Stemmen - verworpen', 'Stemmen - niet aangenomen']);
+
     for (const row of besluitZaakRows ?? []) {
       if (!row.besluit || row.besluit.verwijderd) continue;
       const stemmingen = stemmingenByBesluit.get(row.besluit.id) ?? [];
-      if (stemmingen.length === 0 && !row.besluit.status && !row.besluit.soort) continue;
+      const isEchteUitslag = stemmingen.length > 0 || STEM_RESULT_SOORTEN.has(row.besluit.soort ?? '');
+      if (!isEchteUitslag) continue;
       let voor = 0;
       let tegen = 0;
       let onthouden = 0;
@@ -345,9 +352,12 @@ export async function getActiviteitDb(id: string): Promise<ActiviteitDetail | nu
       // meest informatieve houden: er is een uitslag zodra er stemmen zijn.
       const existing = uitslagByMotie.get(row.zaak_id);
       if (existing && existing.voor + existing.tegen + existing.onthouden > 0 && stemmingen.length === 0) continue;
+      const soortLabel = (row.besluit.soort ?? '').toLowerCase().startsWith('stemmen -')
+        ? row.besluit.soort!.slice(row.besluit.soort!.indexOf('-') + 1).trim().replace(/^./, (c) => c.toUpperCase())
+        : null;
       uitslagByMotie.set(row.zaak_id, {
         besluitId: row.besluit.id,
-        result: row.besluit.status ?? row.besluit.soort ?? (voor >= tegen && voor + tegen > 0 ? 'Aangenomen' : 'Verworpen'),
+        result: soortLabel ?? (voor + tegen > 0 ? (voor >= tegen ? 'Aangenomen' : 'Verworpen') : (row.besluit.status ?? 'Onbekend')),
         voor,
         tegen,
         onthouden,

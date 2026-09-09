@@ -8,7 +8,7 @@ import type { SavedItemKind, SavedItemRecord } from './saved-items';
 
 const TK_BASE = 'https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0';
 
-// ─── Utility ────────────────────────────────────────────────────────────────
+// --- Utility ----------------------------------------------------------------
 
 async function tkFetch<T>(path: string): Promise<T> {
     const url = `${TK_BASE}${path}`;
@@ -26,7 +26,7 @@ function qs(params: Record<string, string>): string {
     return parts.length ? '?' + parts.join('&') : '';
 }
 
-// ─── Types ──────────────────────────────────────────────────────────────────
+// --- Types ------------------------------------------------------------------
 
 export interface TKListResponse<T> {
     '@odata.count'?: number;
@@ -312,9 +312,9 @@ export interface Verslag {
     Activiteit?: Activiteit;
 }
 
-// ─── Dossier helpers ────────────────────────────────────────────────────────
+// --- Dossier helpers --------------------------------------------------------
 
-/** Haal één Kamerstukdossier op met gerelateerde Zaken en Documenten */
+/** Haal een Kamerstukdossier op met gerelateerde Zaken en Documenten */
 export async function getDossier(id: string): Promise<Kamerstukdossier | null> {
     try {
           const expand = [
@@ -359,7 +359,7 @@ export async function getDossiers(opts?: {
     }
 }
 
-// ─── Tijdlijn voor een dossier ───────────────────────────────────────────────
+// --- Tijdlijn voor een dossier -----------------------------------------------
 
 export type TimelineItemType =
     | 'motie'
@@ -475,7 +475,7 @@ function mapDocSoortToType(soort?: string): TimelineItemType {
     return 'document';
 }
 
-// ─── Zaak helpers ───────────────────────────────────────────────────────────
+// --- Zaak helpers -----------------------------------------------------------
 
 export async function getZaak(id: string): Promise<Zaak | null> {
     try {
@@ -514,7 +514,7 @@ export async function getMoties(opts?: {
     }
 }
 
-// ─── Document helpers ────────────────────────────────────────────────────────
+// --- Document helpers --------------------------------------------------------
 
 export async function getDocument(id: string): Promise<TKDocument | null> {
     try {
@@ -554,7 +554,7 @@ export async function getKamerbrieven(opts?: {
     }
 }
 
-// ─── Activiteit / Debat helpers ──────────────────────────────────────────────
+// --- Activiteit / Debat helpers ----------------------------------------------
 
 export async function getActiviteit(id: string): Promise<Activiteit | null> {
     try {
@@ -597,7 +597,7 @@ export async function getActiviteiten(opts?: {
     }
 }
 
-// ─── Commissie helpers ───────────────────────────────────────────────────────
+// --- Commissie helpers -------------------------------------------------------
 
 export async function getCommissies(): Promise<TKListResponse<Commissie>> {
     try {
@@ -620,7 +620,7 @@ export async function getCommissie(id: string): Promise<Commissie | null> {
     }
 }
 
-// ─── Persoon / Kamerlid helpers ──────────────────────────────────────────────
+// --- Persoon / Kamerlid helpers ----------------------------------------------
 
 export async function getKamerleden(opts?: {
     search?: string;
@@ -661,7 +661,7 @@ export async function getZakenVanPersoon(
     }
 }
 
-// ─── Fractie helpers ─────────────────────────────────────────────────────────
+// --- Fractie helpers ---------------------------------------------------------
 
 export async function getFracties(): Promise<TKListResponse<Fractie>> {
     try {
@@ -683,7 +683,7 @@ export async function getFractie(id: string): Promise<Fractie | null> {
     }
 }
 
-// ─── Toezegging helpers ──────────────────────────────────────────────────────
+// --- Toezegging helpers ------------------------------------------------------
 
 export async function getToezeggingen(opts?: {
     top?: number;
@@ -700,7 +700,7 @@ export async function getToezeggingen(opts?: {
     }
 }
 
-// ─── Zoeken ──────────────────────────────────────────────────────────────────
+// --- Zoeken ------------------------------------------------------------------
 
 export interface SearchResults {
     dossiers: Kamerstukdossier[];
@@ -738,7 +738,7 @@ export async function searchAll(query: string): Promise<SearchResults> {
     };
 }
 
-// ─── Utils ───────────────────────────────────────────────────────────────────
+// --- Utils -------------------------------------------------------------------
 
 export function persoonNaam(p: Persoon): string {
     const parts = [p.Roepnaam ?? p.Voornamen, p.Tussenvoegsel, p.Achternaam].filter(Boolean);
@@ -746,7 +746,7 @@ export function persoonNaam(p: Persoon): string {
 }
 
 export function formatDate(iso?: string): string {
-    if (!iso) return '—';
+    if (!iso) return '-';
     return new Date(iso).toLocaleDateString('nl-NL', {
           day: 'numeric',
           month: 'short',
@@ -755,7 +755,7 @@ export function formatDate(iso?: string): string {
 }
 
 export function formatDateShort(iso?: string): string {
-    if (!iso) return '—';
+    if (!iso) return '-';
     return new Date(iso).toLocaleDateString('nl-NL', {
           day: 'numeric',
           month: 'short',
@@ -782,7 +782,7 @@ function uniqueById<T extends { id: string }>(arr: T[]): T[] {
 export const TK_DOCUMENT_URL = (id: string) =>
     `https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0/Document(${id})/resource`;
 
-// ─── Kamerkompas: hoog-niveau monitor-API ───────────────────────────────────
+// --- Kamerkompas: hoog-niveau monitor-API -----------------------------------
 //
 // De pagina's onder app/ praten niet rechtstreeks met de ruwe OData-types
 // hierboven, maar met een klein aantal samengestelde "overview"-functies die
@@ -791,7 +791,7 @@ export const TK_DOCUMENT_URL = (id: string) =>
 // low-level helpers (getMoties, getKamerbrieven, getActiviteiten, ...).
 
 function truncate(text: string, max: number): string {
-    return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+    return text.length > max ? `${text.slice(0, max - 1)}...` : text;
 }
 
 /** Kind-waarden voor een MonitorItem, gedeeld met de "volgen"-functionaliteit */
@@ -833,7 +833,7 @@ export interface SearchSection {
     items: MonitorItem[];
 }
 
-// ─── Adapters: ruwe entiteiten → MonitorItem ────────────────────────────────
+// --- Adapters: ruwe entiteiten -> MonitorItem --------------------------------
 
 function zaakToMonitorItem(zaak: Zaak, opts?: { matchedOn?: string }): MonitorItem {
     const isMotie = zaak.Soort === 'Motie';
@@ -944,7 +944,7 @@ function toezeggingToMonitorItem(t: Toezegging, opts?: { matchedOn?: string }): 
           title: t.Tekst ? truncate(t.Tekst, 140) : 'Toezegging',
           date: formatDate(t.DatumToezegging ?? t.GewijzigdOp),
           status: t.Status,
-          description: [t.Minister, t.Ministerie].filter(Boolean).join(' · ') || undefined,
+          description: [t.Minister, t.Ministerie].filter(Boolean).join(' - ') || undefined,
           matchedOn: opts?.matchedOn,
           meta: { ...t },
     };
@@ -963,9 +963,9 @@ function voteSummaryToMonitorItem(v: VoteSummary): MonitorItem {
     };
 }
 
-// ─── Besluiten / stemmingen ──────────────────────────────────────────────────
+// --- Besluiten / stemmingen --------------------------------------------------
 
-/** Haal Zaken op met hun (genomen) Besluiten en Stemmingen erbij geëxpand */
+/** Haal Zaken op met hun (genomen) Besluiten en Stemmingen erbij geexpand */
 async function fetchZakenMetStemmingen(opts: {
     top?: number;
     besluitId?: string;
@@ -1036,7 +1036,7 @@ export async function getVotesOverview(): Promise<{ items: VoteSummary[]; apiOk:
     return { items, apiOk: items.length > 0 };
 }
 
-/** Eén stemming: geeft een VoteSummary terug als er stemgegevens zijn, anders het onderliggende zaak-item */
+/** Een stemming: geeft een VoteSummary terug als er stemgegevens zijn, anders het onderliggende zaak-item */
 export async function getVoteDetailById(
     id: string
   ): Promise<{ summary?: VoteSummary; item?: MonitorItem }> {
@@ -1053,7 +1053,7 @@ export async function getVoteDetailById(
     return {};
 }
 
-// ─── Verslagen ────────────────────────────────────────────────────────────
+// --- Verslagen ------------------------------------------------------------
 
 export function reportResourceUrl(id?: string): string | undefined {
     if (!id) return undefined;
@@ -1072,7 +1072,7 @@ export async function getReportsOverview(): Promise<{ items: Verslag[]; apiOk: b
     }
 }
 
-// ─── Agenda / debatten ───────────────────────────────────────────────────────
+// --- Agenda / debatten -------------------------------------------------------
 
 export async function getAgendaItemById(id: string): Promise<MonitorItem | null> {
     const activiteit = await getActiviteit(id);
@@ -1121,6 +1121,27 @@ export async function getAgendaOverview(
     };
 }
 
+/** Geschiedenis-overzicht: afgelopen Activiteiten, nieuwste eerst */
+export async function getGeschiedenisOverview(
+    query?: string
+  ): Promise<{ items: MonitorItem[]; apiOk: boolean }> {
+    // Zelfde aanpak als getAgendaOverview maar met een veel groter venster terug
+    // (30 dagen) en alleen de historie: chronologisch (oplopend) opvragen zodat
+    // de 250-item cap niet wordt opgevuld met verre toekomstige activiteiten,
+    // en daarna omdraaien voor nieuwste-eerst.
+    const data = await getActiviteiten({
+                      top: MAX_ACTIVITEITEN_TOP,
+                      search: query,
+                      vanaf: isoDateDaysAgo(30),
+                      orderby: 'asc',
+        });
+    const { past } = splitPlannedPast(data.value);
+    return {
+          items: past.reverse().map((a) => activiteitToMonitorItem(a)),
+          apiOk: data.value.length > 0,
+    };
+}
+
 /** Debat-overzicht: Activiteiten waarvan de Soort op "debat" duidt */
 export async function getDebateOverview(
     query?: string
@@ -1142,7 +1163,7 @@ export async function getDebateOverview(
     };
 }
 
-// ─── Fracties (monitor-view) ─────────────────────────────────────────────────
+// --- Fracties (monitor-view) -------------------------------------------------
 
 export function factionResourceUrl(id: string): string {
     return `${TK_BASE}/Fractie(${id})`;
@@ -1159,7 +1180,7 @@ export async function getFactionsOverview(): Promise<{ items: TkFaction[]; apiOk
     return { items: data.value, apiOk: data.value.length > 0 };
 }
 
-// ─── Kamerbrieven (monitor-view) ─────────────────────────────────────────────
+// --- Kamerbrieven (monitor-view) ---------------------------------------------
 
 export function documentResourceUrl(id?: string): string | undefined {
     if (!id) return undefined;
@@ -1180,7 +1201,7 @@ export async function getLettersOverview(
     return { items, apiOk: items.length > 0 };
 }
 
-// ─── Kamerleden (monitor-view) ───────────────────────────────────────────────
+// --- Kamerleden (monitor-view) -----------------------------------------------
 
 export function personResourceUrl(id?: string): string | undefined {
     if (!id) return undefined;
@@ -1201,9 +1222,9 @@ export async function getMembersOverview(
     return { items, apiOk: items.length > 0 };
 }
 
-// ─── Kamerkompas dagdashboard ─────────────────────────────────────────────────
+// --- Kamerkompas dagdashboard -------------------------------------------------
 
-/** Alles wat het dagdashboard (app/page.tsx) nodig heeft, in één call */
+/** Alles wat het dagdashboard (app/page.tsx) nodig heeft, in een call */
 export async function getKamerkompasOverview() {
     const [activiteitenResp, motiesResp, brievenResp, fractiesResp, toezeggingenResp, reportsOverview] =
           await Promise.all([
@@ -1272,7 +1293,7 @@ export async function getKamerkompasOverview() {
   };
 }
 
-// ─── Dashboard (volgprofiel) ──────────────────────────────────────────────────
+// --- Dashboard (volgprofiel) --------------------------------------------------
 
 /** Ontwikkelingen relevant voor de opgeslagen items van een gebruiker */
 export async function getDashboardDevelopments(savedItems: SavedItemRecord[]): Promise<{
@@ -1311,7 +1332,7 @@ export async function getDashboardDevelopments(savedItems: SavedItemRecord[]): P
   return { themes, members, debates, developments, votes };
 }
 
-// ─── Zoeken (monitor-view) ────────────────────────────────────────────────────
+// --- Zoeken (monitor-view) ----------------------------------------------------
 
 /** Zoekresultaten gegroepeerd per entiteitstype, klaar voor de zoekpagina */
 export async function searchMonitor(query: string): Promise<SearchSection[]> {

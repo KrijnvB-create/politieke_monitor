@@ -16,6 +16,7 @@ type ActMeta = {
 };
 
 type Category = "debat" | "briefing" | "procedureel" | "reis" | "overig";
+type Mode = "upcoming" | "geschiedenis";
 
 const CATS: Record<Category, { label: string; dot: string }> = {
   debat: { label: "Debatten en wetgeving", dot: "#9441e9" },
@@ -49,14 +50,22 @@ function categoryOf(soort: string | undefined): Category {
   return CAT_OF[soort] ?? "overig";
 }
 
-const PERIODS = [
-  { key: "vandaag", label: "Vandaag", days: 1 },
-  { key: "week", label: "Deze week", days: 5 },
-  { key: "twee", label: "Komende 2 weken", days: 14 },
-  { key: "alles", label: "Alles vooruit", days: 999 }
-] as const;
+const PERIOD_SETS: Record<Mode, { key: "vandaag" | "week" | "twee" | "alles"; label: string; days: number }[]> = {
+  upcoming: [
+    { key: "vandaag", label: "Vandaag", days: 1 },
+    { key: "week", label: "Deze week", days: 5 },
+    { key: "twee", label: "Komende 2 weken", days: 14 },
+    { key: "alles", label: "Alles vooruit", days: 999 }
+  ],
+  geschiedenis: [
+    { key: "vandaag", label: "Vandaag", days: 1 },
+    { key: "week", label: "Afgelopen week", days: 7 },
+    { key: "twee", label: "Afgelopen 2 weken", days: 14 },
+    { key: "alles", label: "Alles terug", days: 999 }
+  ]
+};
 
-type PeriodKey = (typeof PERIODS)[number]["key"];
+type PeriodKey = "vandaag" | "week" | "twee" | "alles";
 
 const WEEKDAYS = ["zondag", "maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag"];
 const MONTHS = [
@@ -78,9 +87,10 @@ function dayKey(iso: string) {
   return iso.slice(0, 10);
 }
 
-function inPeriod(dateKey: string, todayKey: string, key: PeriodKey) {
-  const days = PERIODS.find((p) => p.key === key)!.days;
+function inPeriod(dateKey: string, todayKey: string, key: PeriodKey, mode: Mode) {
+  const days = PERIOD_SETS[mode].find((p) => p.key === key)!.days;
   const diff = Math.round((new Date(dateKey).getTime() - new Date(todayKey).getTime()) / 86400000);
+  if (mode === "geschiedenis") return diff <= 0 && diff > -days;
   return diff >= 0 && diff < days;
 }
 
@@ -109,7 +119,8 @@ type Row = {
   dateKey: string;
 };
 
-export function AgendaExplorer({ items }: { items: MonitorItem[] }) {
+export function AgendaExplorer({ items, mode = "upcoming" }: { items: MonitorItem[]; mode?: Mode }) {
+  const PERIODS = PERIOD_SETS[mode];
   const [period, setPeriod] = useState<PeriodKey>("week");
   const [types, setTypes] = useState<Category[]>([]);
   const [cies, setCies] = useState<string[]>([]);
@@ -137,7 +148,7 @@ export function AgendaExplorer({ items }: { items: MonitorItem[] }) {
   }, [items]);
 
   function matches(row: Row, ignore?: "type" | "cie") {
-    if (!inPeriod(row.dateKey, todayKey, period)) return false;
+    if (!inPeriod(row.dateKey, todayKey, period, mode)) return false;
     if (ignore !== "type" && types.length && !types.includes(row.cat)) return false;
     if (ignore !== "cie" && cies.length && !(row.cieName && cies.includes(row.cieName))) return false;
     if (q) {
@@ -160,8 +171,10 @@ export function AgendaExplorer({ items }: { items: MonitorItem[] }) {
       list.push(row);
       map.set(row.dateKey, list);
     }
-    return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
-  }, [visible]);
+    const entries = Array.from(map.entries());
+    entries.sort(([a], [b]) => (mode === "geschiedenis" ? b.localeCompare(a) : a.localeCompare(b)));
+    return entries;
+  }, [visible, mode]);
 
   const typeCounts = useMemo(() => {
     const counts: Record<Category, number> = { debat: 0, briefing: 0, procedureel: 0, reis: 0, overig: 0 };
@@ -186,10 +199,11 @@ export function AgendaExplorer({ items }: { items: MonitorItem[] }) {
   const periodCounts = useMemo(() => {
     const counts: Record<PeriodKey, number> = { vandaag: 0, week: 0, twee: 0, alles: 0 };
     for (const p of PERIODS) {
-      counts[p.key] = rows.filter((r) => inPeriod(r.dateKey, todayKey, p.key)).length;
+      counts[p.key] = rows.filter((r) => inPeriod(r.dateKey, todayKey, p.key, mode)).length;
     }
     return counts;
-  }, [rows, todayKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, todayKey, mode]);
 
   function toggleType(cat: Category) {
     setTypes((prev) => (prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]));

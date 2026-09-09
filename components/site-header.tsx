@@ -4,12 +4,12 @@ import {
   CalendarRange,
   Compass,
   FileText,
+  History,
   Landmark,
   LayoutDashboard,
   Radio,
   Search,
   Users,
-  Vote,
   UserCircle
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
@@ -36,14 +36,13 @@ export async function SiteHeader() {
         </span>
       </Link>
       <nav className="main-nav" aria-label="Hoofdnavigatie">
-        <Link href="/">Overzicht</Link>
-        <Link href="/stemmingen">
-          <Vote size={16} aria-hidden="true" />
-          Stemmingen
-        </Link>
         <Link href="/agenda">
           <CalendarRange size={16} aria-hidden="true" />
           Agenda
+        </Link>
+        <Link href="/geschiedenis">
+          <History size={16} aria-hidden="true" />
+          Geschiedenis
         </Link>
         <Link href="/kamerbrieven">
           <FileText size={16} aria-hidden="true" />
