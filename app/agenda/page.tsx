@@ -1,75 +1,56 @@
-import { CalendarDays, Search } from "lucide-react";
+import Link from "next/link";
+import { CalendarDays, FileText } from "lucide-react";
 import { ApiStatusPill } from "@/components/api-status-pill";
-import { MonitorResultCard } from "@/components/monitor-result-card";
+import { AgendaExplorer } from "@/components/AgendaExplorer";
 import { getAgendaOverview } from "@/lib/tk";
 
-type AgendaPageProps = {
-  searchParams?: Promise<{ q?: string }>;
-};
-
-export default async function AgendaPage({ searchParams }: AgendaPageProps) {
-  const params = await searchParams;
-  const query = params?.q?.trim() ?? "";
-  const agenda = await getAgendaOverview(query);
+export default async function AgendaPage() {
+  const agenda = await getAgendaOverview();
 
   return (
     <main className="page-shell">
-      <section className="section-heading search-heading">
+      <div className="agenda-hero">
         <div>
           <p className="eyebrow">Agenda</p>
-          <h1>Vergaderingen, debatten en eerdere plenaire momenten.</h1>
+          <h1>Wat komt er aan in de Kamer</h1>
         </div>
-        <form className="search-form" action="/agenda">
-          <Search size={18} aria-hidden="true" />
-          <input name="q" defaultValue={query} placeholder="Filter op onderwerp, zaal of soort debat" />
-          <button className="primary-button" type="submit">Filter</button>
-        </form>
-      </section>
-
-      <div className="result-count" aria-live="polite">
-        <CalendarDays size={18} aria-hidden="true" />
-        <strong>{agenda.planned.length + agenda.past.length}</strong>
-        <span>{query ? `agenda-items voor "${query}"` : "agenda-items"}</span>
         <ApiStatusPill apiOk={agenda.apiOk} />
       </div>
 
-      <section className="overview-grid two">
-        <div>
-          <div className="section-heading compact">
-            <div>
-              <p className="eyebrow">Komend en actueel</p>
-              <h2>Activiteiten</h2>
-            </div>
-          </div>
-          <div className="result-list">
-            {agenda.planned.length === 0 ? (
-              <div className="empty-state small">
-                <p>Geen komende activiteiten gevonden.</p>
-              </div>
-            ) : (
-              agenda.planned.map((item) => <MonitorResultCard item={item} key={`${item.kind}-${item.id}`} />)
-            )}
-          </div>
-        </div>
+      <AgendaExplorer items={agenda.planned} />
 
-        <div>
-          <div className="section-heading compact">
-            <div>
-              <p className="eyebrow">Historie</p>
-              <h2>Debatten uit het verleden</h2>
-            </div>
+      {agenda.past.length > 0 ? (
+        <section style={{ paddingTop: 48 }}>
+          <div className="section-divider">
+            <strong>
+              <FileText size={18} aria-hidden="true" color="#512986" />
+              Historie
+            </strong>
+            <hr />
+            <em>{agenda.past.length} eerdere debatten</em>
           </div>
-          <div className="result-list">
-            {agenda.past.length === 0 ? (
-              <div className="empty-state small">
-                <p>Geen eerdere debatten gevonden.</p>
+          <div className="item-card-list">
+            {agenda.past.map((item) => (
+              <div className="item-card" key={`${item.kind}-${item.id}`}>
+                <span className="item-card-icon">
+                  <CalendarDays size={19} aria-hidden="true" />
+                </span>
+                <div className="item-card-body">
+                  <Link href={`/agenda/${encodeURIComponent(item.id)}`}>{item.title}</Link>
+                  {item.description ? <p>{item.description}</p> : null}
+                  <div className="item-card-tags">
+                    <span className="item-card-tag">{item.eyebrow}</span>
+                    <span className="item-card-meta">
+                      <CalendarDays size={13} aria-hidden="true" />
+                      {item.date}
+                    </span>
+                  </div>
+                </div>
               </div>
-            ) : (
-              agenda.past.map((item) => <MonitorResultCard item={item} key={`${item.kind}-${item.id}`} />)
-            )}
+            ))}
           </div>
-        </div>
-      </section>
+        </section>
+      ) : null}
     </main>
   );
 }
