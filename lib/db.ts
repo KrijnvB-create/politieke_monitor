@@ -1223,3 +1223,80 @@ export async function getToezeggingenVanPersoonDb(
 
   return (data ?? []).slice(0, opts?.limit ?? 150);
 }
+
+
+// --- Motie-uitslagen op zaak-id (dossierdetailpagina) ------------------------
+
+/** Stemuitslag per zaak-id, voor een gegeven lijst zaak-ids (moties op de
+ * dossier-tijdlijn). Zelfde logica als getActiviteitDb/getZakenMetUitslagVanPersoonDb:
+ * een Besluit telt alleen als echte stemuitslag als het Soort een afgeronde
+ * stemming beschrijft (niet "Voorstel"/"Ingediend"/"Stemmen - aangehouden", dat
+ * zijn tussenstappen) of als er daadwerkelijk Stemmingen aan hangen. */
+export async function getMotieUitslagenDb(zaakIds: string[]): Promise<Map<string, MotieUitslag>> {
+  const uitslagByZaak = new Map<string, MotieUitslag>();
+  if (zaakIds.length === 0) return uitslagByZaak;
+
+  const supabase = await createClient();
+  const { data: besluitZaakRows } = await supabase
+    .from('tk_besluit_zaken')
+    .select('zaak_id, besluit:tk_besluiten(*)')
+    .in('zaak_id', zaakIds)
+    .returns<{ zaak_id: string; besluit: DbBesluit | null }[]>();
+
+  const besluitIds = uniqueById(
+    (besluitZaakRows ?? []).map((r) => r.besluit).filter((b): b is DbBesluit => !!b && !b.verwijderd)
+  ).map((b) => b.id);
+
+  const { data: stemmingRows } = besluitIds.length
+    ? await supabase
+        .from('tk_stemmingen')
+        .select('besluit_id, soort, fractie_grootte')
+        .in('besluit_id', besluitIds)
+        .eq('verwijderd', false)
+        .returns<{ besluit_id: string; soort: string | null; fractie_grootte: number | null }[]>()
+    : { data: [] as { besluit_id: string; soort: string | null; fractie_grootte: number | null }[] };
+
+  const stemmingenByBesluit = new Map<string, { soort: string | null; fractie_grootte: number | null }[]>();
+  for (const s of stemmingRows ?? []) {
+    const list = stemmingenByBesluit.get(s.besluit_id) ?? [];
+    list.push(s);
+    stemmingenByBesluit.set(s.besluit_id, list);
+  }
+
+  const STEM_RESULT_SOORTEN = new Set(['Stemmen - aangenomen', 'Stemmen - verworpen', 'Stemmen - niet aangenomen']);
+
+  for (const row of besluitZaakRows ?? []) {
+    if (!row.besluit || row.besluit.verwijderd) continue;
+    const stemmingen = stemmingenByBesluit.get(row.besluit.id) ?? [];
+    const isEchteUitslag = stemmingen.length > 0 || STEM_RESULT_SOORTEN.has(row.besluit.soort ?? '');
+    if (!isEchteUitslag) continue;
+
+    let voor = 0;
+    let tegen = 0;
+    let onthouden = 0;
+    for (const s of stemmingen) {
+      const soort = (s.soort ?? '').toLowerCase();
+      const weight = s.fractie_grootte ?? 1;
+      if (soort.includes('voor')) voor += weight;
+      else if (soort.includes('tegen')) tegen += weight;
+      else onthouden += weight;
+    }
+
+    const existing = uitslagByZaak.get(row.zaak_id);
+    if (existing && existing.voor + existing.tegen + existing.onthouden > 0 && stemmingen.length === 0) continue;
+
+    const soortLabel = (row.besluit.soort ?? '').toLowerCase().startsWith('stemmen -')
+      ? row.besluit.soort!.slice(row.besluit.soort!.indexOf('-') + 1).trim().replace(/^./, (c) => c.toUpperCase())
+      : null;
+
+    uitslagByZaak.set(row.zaak_id, {
+      besluitId: row.besluit.id,
+      result: soortLabel ?? (voor + tegen > 0 ? (voor >= tegen ? 'Aangenomen' : 'Verworpen') : (row.besluit.status ?? 'Onbekend')),
+      voor,
+      tegen,
+      onthouden,
+    });
+  }
+
+  return uitslagByZaak;
+}
