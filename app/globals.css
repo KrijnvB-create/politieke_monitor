@@ -2793,3 +2793,62 @@ p {
     gap: 12px;
   }
 }
+
+/* --- Kamerlid detail page (app/kamerleden/[id]) ---------------------------- */
+
+.kamerlid-hero-avatar {
+  position: relative;
+  display: grid;
+  width: 96px;
+  height: 96px;
+  flex: 0 0 auto;
+  place-items: center;
+  overflow: hidden;
+  border: 2px solid rgba(246, 246, 243, 0.3);
+  border-radius: 50%;
+  background: var(--tl-on-dark-line);
+  color: var(--tl-on-dark);
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 600;
+}
+
+.kamerlid-hero-avatar img {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.kamerlid-hero-avatar span {
+  position: relative;
+  z-index: 0;
+}
+
+.kamerlid-hero-fractie {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 15px;
+  color: rgba(246, 246, 243, 0.85);
+}
+
+.kamerlid-hero-fractie i {
+  display: inline-block;
+  width: 20px;
+  height: 6px;
+  border-radius: 3px;
+  font-style: normal;
+}
+
+.pill-toggle-group button .count {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--tl-ink-500);
+}
+
+.pill-toggle-group button.active .count {
+  color: var(--tl-on-dark-muted);
+}
