@@ -5,10 +5,20 @@
 
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { getDossier, buildTimeline, TimelineItemType } from '@/lib/tk';
-import { getMotieUitslagenDb } from '@/lib/db';
+import { getDossier, buildTimeline, TimelineItemType, type TimelineItem } from '@/lib/tk';
+import { getMotieUitslagenDb, getDebattenVoorDossierDb, type DbActiviteit } from '@/lib/db';
 import { DossierDetailHeader } from '@/components/DossierDetailHeader';
 import { DossierTimelineList } from '@/components/DossierTimelineList';
+
+function debatToTimelineItem(a: DbActiviteit): TimelineItem {
+  return {
+    id: a.id,
+    type: 'debat',
+    date: a.aanvangstijd ?? '',
+    title: a.onderwerp ?? a.soort ?? 'Debat',
+    status: a.status ?? undefined,
+  };
+}
 
 // --- Types -------------------------------------------------------------------
 
@@ -43,11 +53,20 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
   const activeFilter = resolvedSearchParams?.filter ?? 'alles';
   const filterConfig = FILTER_TABS.find((t) => t.key === activeFilter) ?? FILTER_TABS[0];
 
-  const allItems = buildTimeline(dossier);
+  const zaakEnDocumentItems = buildTimeline(dossier);
+  const motieZaakIds = zaakEnDocumentItems.filter((item) => item.type === 'motie').map((item) => item.id);
 
-  // Stemuitslag (aangenomen/verworpen) voor de moties in de tijdlijn erbij zoeken.
-  const motieZaakIds = allItems.filter((item) => item.type === 'motie').map((item) => item.id);
-  const uitslagen = await getMotieUitslagenDb(motieZaakIds);
+  // Stemuitslag (aangenomen/verworpen) voor de moties, en de debatten van dit
+  // dossier (via de zaken erbij) parallel ophalen.
+  const [uitslagen, debatten] = await Promise.all([
+    getMotieUitslagenDb(motieZaakIds),
+    getDebattenVoorDossierDb(dossier.Id),
+  ]);
+
+  const allItems = [...zaakEnDocumentItems, ...debatten.map(debatToTimelineItem)].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
+
   const itemsWithVotes = allItems.map((item) =>
     item.type === 'motie' ? { ...item, voteResult: uitslagen.get(item.id) } : item
   );

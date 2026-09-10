@@ -1300,3 +1300,59 @@ export async function getMotieUitslagenDb(zaakIds: string[]): Promise<Map<string
 
   return uitslagByZaak;
 }
+
+
+// --- Debatten voor een dossier (dossierdetailpagina) -------------------------
+
+interface AgendapuntActiviteitRow {
+  agendapunt: { activiteit: DbActiviteit | null } | null;
+}
+
+/** Debatten (activiteiten) die horen bij een dossier: via de zaken in het dossier,
+ * zowel de rechtstreekse Activiteit->Zaak-koppeling (tk_activiteit_zaken, vaak leeg)
+ * als via Agendapunt->Zaak (tk_agendapunt_zaken, de route die de Tweede Kamer zelf
+ * gebruikt en veel completer is) -- zelfde dubbele aanpak als getActiviteitDb. */
+export async function getDebattenVoorDossierDb(
+  dossierId: string,
+  opts?: { limit?: number }
+): Promise<DbActiviteit[]> {
+  const supabase = await createClient();
+
+  const { data: zaakRows } = await supabase
+    .from('tk_zaken')
+    .select('id')
+    .eq('kamerstukdossier_id', dossierId)
+    .eq('verwijderd', false)
+    .returns<{ id: string }[]>();
+
+  const zaakIds = (zaakRows ?? []).map((z) => z.id);
+  if (zaakIds.length === 0) return [];
+
+  const [{ data: directRows }, { data: viaAgendapuntRows }] = await Promise.all([
+    supabase
+      .from('tk_activiteit_zaken')
+      .select('activiteit:tk_activiteiten(*)')
+      .in('zaak_id', zaakIds)
+      .returns<ActiviteitZaakRow[]>(),
+    supabase
+      .from('tk_agendapunt_zaken')
+      .select('agendapunt:tk_agendapunten(activiteit:tk_activiteiten(*))')
+      .in('zaak_id', zaakIds)
+      .returns<AgendapuntActiviteitRow[]>(),
+  ]);
+
+  const activiteiten = uniqueById(
+    [
+      ...(directRows ?? []).map((r) => r.activiteit),
+      ...(viaAgendapuntRows ?? []).map((r) => r.agendapunt?.activiteit ?? null),
+    ].filter((a): a is DbActiviteit => !!a && !a.verwijderd)
+  );
+
+  // Alleen echte debatten (Commissiedebat, Plenair debat, ...) -- niet de
+  // procedurele agendapunten (Procedurevergadering, Regeling van werkzaamheden,
+  // Inbreng schriftelijk overleg, ...) die verreweg de meeste activiteiten vormen.
+  const debatten = activiteiten.filter((a) => (a.soort ?? '').toLowerCase().includes('debat'));
+
+  debatten.sort((a, b) => new Date(b.aanvangstijd ?? 0).getTime() - new Date(a.aanvangstijd ?? 0).getTime());
+  return debatten.slice(0, opts?.limit ?? 100);
+}
