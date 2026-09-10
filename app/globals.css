@@ -2753,3 +2753,43 @@ p {
     padding-left: 10px;
   }
 }
+
+/* --- Dossiers list page (app/dossiers) ------------------------------------- */
+
+.dossier-stats {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.dossier-stat {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  text-decoration: none;
+}
+
+.dossier-stat strong {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--tl-deep-purple);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.dossier-stat span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--tl-ink-500);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 900px) {
+  .dossier-stats {
+    gap: 12px;
+  }
+}

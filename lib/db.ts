@@ -867,3 +867,85 @@ export async function getKamerbrievenOverviewDb(opts?: { limit?: number }): Prom
     dossier: doc.kamerstukdossier_id ? dossierById.get(doc.kamerstukdossier_id) ?? null : null,
   }));
 }
+
+
+// --- Dossiers-overzicht -----------------------------------------------------
+
+export interface DbDossierOverview {
+  id: string;
+  titel: string | null;
+  citeertitel: string | null;
+  nummer: number | null;
+  afgesloten: boolean;
+  vergaderjaar: string | null;
+  gewijzigd_op: string | null;
+  docCount: number;
+  debatCount: number;
+  commissie: string | null;
+  isInitiatiefnota: boolean;
+  nextAgenda: { datum: string; titel: string } | null;
+}
+
+interface DossiersOverviewRpcRow {
+  dossier_id: string;
+  doc_count: number;
+  debat_count: number;
+  commissie: string | null;
+  is_initiatiefnota: boolean;
+  next_agenda_datum: string | null;
+  next_agenda_titel: string | null;
+}
+
+/** Dossiers met afgeleide statistieken (documenten, debatten, commissie, eerstvolgend
+ * agendapunt) voor de Dossiers-overzichtspagina. Beperkt tot de meest recent gewijzigde
+ * dossiers -- er zijn er in totaal duizenden, maar alleen de laatste ~180 dagen zijn ook
+ * daadwerkelijk gesynchroniseerd (zie sync-tweede-kamer WINDOW_DAYS).
+ *
+ * De statistieken zelf komen uit de `dossiers_overview` Postgres-functie (zie migratie
+ * add_dossiers_overview_function) in plaats van hier los per tabel te tellen: voor 400
+ * dossiers lopen de onderliggende documenten/zaken/activiteiten-aantallen in de duizenden,
+ * en de Supabase REST-laag knipt elk los .select() resultaat stil af op 1000 rijen. Tellen
+ * in de database voorkomt die afkap. */
+export async function getDossiersOverviewDb(opts?: { limit?: number }): Promise<DbDossierOverview[]> {
+  const supabase = await createClient();
+  const limit = opts?.limit ?? 400;
+
+  const { data: dossiers } = await supabase
+    .from('tk_kamerstukdossiers')
+    .select('id, titel, citeertitel, nummer, afgesloten, vergaderjaar, gewijzigd_op')
+    .eq('verwijderd', false)
+    .order('gewijzigd_op', { ascending: false, nullsFirst: false })
+    .limit(limit)
+    .returns<
+      { id: string; titel: string | null; citeertitel: string | null; nummer: number | null; afgesloten: boolean; vergaderjaar: string | null; gewijzigd_op: string | null }[]
+    >();
+
+  if (!dossiers || dossiers.length === 0) return [];
+  const dossierIds = dossiers.map((d) => d.id);
+
+  const { data: statsRowsRaw } = await supabase.rpc('dossiers_overview', { p_dossier_ids: dossierIds });
+  const statsRows = (statsRowsRaw ?? []) as DossiersOverviewRpcRow[];
+
+  const statsByDossier = new Map(statsRows.map((r) => [r.dossier_id, r]));
+
+  return dossiers.map((d) => {
+    const stats = statsByDossier.get(d.id);
+    return {
+      id: d.id,
+      titel: d.titel,
+      citeertitel: d.citeertitel,
+      nummer: d.nummer,
+      afgesloten: d.afgesloten,
+      vergaderjaar: d.vergaderjaar,
+      gewijzigd_op: d.gewijzigd_op,
+      docCount: stats?.doc_count ?? 0,
+      debatCount: stats?.debat_count ?? 0,
+      commissie: stats?.commissie ?? null,
+      isInitiatiefnota: stats?.is_initiatiefnota ?? false,
+      nextAgenda:
+        stats?.next_agenda_datum && stats.next_agenda_titel
+          ? { datum: stats.next_agenda_datum, titel: stats.next_agenda_titel }
+          : null,
+    };
+  });
+}
