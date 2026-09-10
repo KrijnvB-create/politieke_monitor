@@ -886,10 +886,26 @@ export interface DbDossierOverview {
   nextAgenda: { datum: string; titel: string } | null;
 }
 
+interface DossiersOverviewRpcRow {
+  dossier_id: string;
+  doc_count: number;
+  debat_count: number;
+  commissie: string | null;
+  is_initiatiefnota: boolean;
+  next_agenda_datum: string | null;
+  next_agenda_titel: string | null;
+}
+
 /** Dossiers met afgeleide statistieken (documenten, debatten, commissie, eerstvolgend
  * agendapunt) voor de Dossiers-overzichtspagina. Beperkt tot de meest recent gewijzigde
  * dossiers -- er zijn er in totaal duizenden, maar alleen de laatste ~180 dagen zijn ook
- * daadwerkelijk gesynchroniseerd (zie sync-tweede-kamer WINDOW_DAYS). */
+ * daadwerkelijk gesynchroniseerd (zie sync-tweede-kamer WINDOW_DAYS).
+ *
+ * De statistieken zelf komen uit de `dossiers_overview` Postgres-functie (zie migratie
+ * add_dossiers_overview_function) in plaats van hier los per tabel te tellen: voor 400
+ * dossiers lopen de onderliggende documenten/zaken/activiteiten-aantallen in de duizenden,
+ * en de Supabase REST-laag knipt elk los .select() resultaat stil af op 1000 rijen. Tellen
+ * in de database voorkomt die afkap. */
 export async function getDossiersOverviewDb(opts?: { limit?: number }): Promise<DbDossierOverview[]> {
   const supabase = await createClient();
   const limit = opts?.limit ?? 400;
@@ -907,94 +923,14 @@ export async function getDossiersOverviewDb(opts?: { limit?: number }): Promise<
   if (!dossiers || dossiers.length === 0) return [];
   const dossierIds = dossiers.map((d) => d.id);
 
-  const [docResult, zaakResult] = await Promise.all([
-    supabase
-      .from('tk_documenten')
-      .select('kamerstukdossier_id')
-      .in('kamerstukdossier_id', dossierIds)
-      .eq('verwijderd', false)
-      .returns<{ kamerstukdossier_id: string }[]>(),
-    supabase
-      .from('tk_zaken')
-      .select('id, kamerstukdossier_id, soort')
-      .in('kamerstukdossier_id', dossierIds)
-      .eq('verwijderd', false)
-      .returns<{ id: string; kamerstukdossier_id: string; soort: string | null }[]>(),
-  ]);
+  const { data: statsRows } = await supabase
+    .rpc('dossiers_overview', { p_dossier_ids: dossierIds })
+    .returns<DossiersOverviewRpcRow[]>();
 
-  const docCountByDossier = new Map<string, number>();
-  for (const row of docResult.data ?? []) {
-    docCountByDossier.set(row.kamerstukdossier_id, (docCountByDossier.get(row.kamerstukdossier_id) ?? 0) + 1);
-  }
-
-  const zaakToDossier = new Map<string, string>();
-  const initiatiefnotaDossiers = new Set<string>();
-  for (const row of zaakResult.data ?? []) {
-    zaakToDossier.set(row.id, row.kamerstukdossier_id);
-    if (row.soort?.toLowerCase().includes('initiatiefnota')) initiatiefnotaDossiers.add(row.kamerstukdossier_id);
-  }
-
-  const zaakIds = Array.from(zaakToDossier.keys());
-  const nowIso = new Date().toISOString();
-
-  const { data: azRows } = zaakIds.length
-    ? await supabase
-        .from('tk_activiteit_zaken')
-        .select('zaak_id, activiteit:tk_activiteiten(id, onderwerp, aanvangstijd, verwijderd, voortouwcommissie_id)')
-        .in('zaak_id', zaakIds)
-        .returns<
-          { zaak_id: string; activiteit: { id: string; onderwerp: string | null; aanvangstijd: string | null; verwijderd: boolean; voortouwcommissie_id: string | null } | null }[]
-        >()
-    : { data: [] as { zaak_id: string; activiteit: { id: string; onderwerp: string | null; aanvangstijd: string | null; verwijderd: boolean; voortouwcommissie_id: string | null } | null }[] };
-
-  const commissieIds = Array.from(
-    new Set((azRows ?? []).map((r) => r.activiteit?.voortouwcommissie_id).filter((id): id is string => !!id))
-  );
-  const { data: commissieRows } = commissieIds.length
-    ? await supabase.from('tk_commissies').select('id, naam_nl').in('id', commissieIds).returns<{ id: string; naam_nl: string | null }[]>()
-    : { data: [] as { id: string; naam_nl: string | null }[] };
-  const commissieNaamById = new Map((commissieRows ?? []).map((c) => [c.id, c.naam_nl]));
-
-  const debatIdsByDossier = new Map<string, Set<string>>();
-  const commissieCountByDossier = new Map<string, Map<string, number>>();
-  const nextAgendaByDossier = new Map<string, { datum: string; titel: string }>();
-
-  for (const row of azRows ?? []) {
-    const activiteit = row.activiteit;
-    if (!activiteit || activiteit.verwijderd) continue;
-    const dossierId = zaakToDossier.get(row.zaak_id);
-    if (!dossierId) continue;
-
-    const debatSet = debatIdsByDossier.get(dossierId) ?? new Set<string>();
-    debatSet.add(activiteit.id);
-    debatIdsByDossier.set(dossierId, debatSet);
-
-    if (activiteit.voortouwcommissie_id) {
-      const naam = commissieNaamById.get(activiteit.voortouwcommissie_id);
-      if (naam) {
-        const counts = commissieCountByDossier.get(dossierId) ?? new Map<string, number>();
-        counts.set(naam, (counts.get(naam) ?? 0) + 1);
-        commissieCountByDossier.set(dossierId, counts);
-      }
-    }
-
-    if (activiteit.aanvangstijd && activiteit.aanvangstijd >= nowIso) {
-      const bestaand = nextAgendaByDossier.get(dossierId);
-      if (!bestaand || activiteit.aanvangstijd < bestaand.datum) {
-        nextAgendaByDossier.set(dossierId, {
-          datum: activiteit.aanvangstijd,
-          titel: activiteit.onderwerp ?? 'Agendapunt',
-        });
-      }
-    }
-  }
+  const statsByDossier = new Map((statsRows ?? []).map((r) => [r.dossier_id, r]));
 
   return dossiers.map((d) => {
-    const commissieCounts = commissieCountByDossier.get(d.id);
-    const topCommissie = commissieCounts
-      ? Array.from(commissieCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
-      : null;
-
+    const stats = statsByDossier.get(d.id);
     return {
       id: d.id,
       titel: d.titel,
@@ -1003,11 +939,14 @@ export async function getDossiersOverviewDb(opts?: { limit?: number }): Promise<
       afgesloten: d.afgesloten,
       vergaderjaar: d.vergaderjaar,
       gewijzigd_op: d.gewijzigd_op,
-      docCount: docCountByDossier.get(d.id) ?? 0,
-      debatCount: debatIdsByDossier.get(d.id)?.size ?? 0,
-      commissie: topCommissie,
-      isInitiatiefnota: initiatiefnotaDossiers.has(d.id),
-      nextAgenda: nextAgendaByDossier.get(d.id) ?? null,
+      docCount: stats?.doc_count ?? 0,
+      debatCount: stats?.debat_count ?? 0,
+      commissie: stats?.commissie ?? null,
+      isInitiatiefnota: stats?.is_initiatiefnota ?? false,
+      nextAgenda:
+        stats?.next_agenda_datum && stats.next_agenda_titel
+          ? { datum: stats.next_agenda_datum, titel: stats.next_agenda_titel }
+          : null,
     };
   });
 }
