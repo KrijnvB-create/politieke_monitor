@@ -4,10 +4,11 @@
  */
 
 import Link from 'next/link';
+import { Eye, EyeOff } from 'lucide-react';
 import { TimelineItem, TimelineItemType, formatDate } from '@/lib/tk';
 import { RelationChipGroup } from './RelationChip';
 
-// ─── Type label & kleur config ───────────────────────────────────────────────
+// --- Type label & kleur config -----------------------------------------------
 
 const TYPE_CONFIG: Record<
   TimelineItemType,
@@ -23,7 +24,7 @@ const TYPE_CONFIG: Record<
   zaak:       { label: 'Zaak',        color: 'bg-slate-100 text-slate-600',   dot: 'bg-slate-400',  href: (id) => `/zaken/${id}` },
 };
 
-// ─── Kabinetsappreciatie badge ───────────────────────────────────────────────
+// --- Kabinetsappreciatie badge -----------------------------------------------
 
 function KabApprec({ value }: { value?: string }) {
   if (!value || value === 'Niet beschikbaar bij gewijzigde moties en/of amendementen') return null;
@@ -39,13 +40,43 @@ function KabApprec({ value }: { value?: string }) {
   );
 }
 
-// ─── TimelineCard ────────────────────────────────────────────────────────────
+// --- Motie-uitslag badge -----------------------------------------------------
+
+export interface MotieVoteResult {
+  result: string;
+  voor: number;
+  tegen: number;
+}
+
+function VoteResultBadge({ value }: { value?: MotieVoteResult }) {
+  if (!value) return null;
+  const isAangenomen = value.result === 'Aangenomen';
+  const isVerworpen = value.result === 'Verworpen';
+  const color = isAangenomen
+    ? 'bg-green-100 text-green-700'
+    : isVerworpen
+    ? 'bg-red-100 text-red-700'
+    : 'bg-slate-100 text-slate-600';
+  return (
+    <span className={`text-xs font-semibold px-2 py-0.5 rounded ${color}`}>
+      {value.result}
+      {(isAangenomen || isVerworpen) && (
+        <span className="font-normal opacity-75"> - {value.voor} voor</span>
+      )}
+    </span>
+  );
+}
+
+// --- TimelineCard ------------------------------------------------------------
 
 interface TimelineCardProps {
   item: TimelineItem;
+  voteResult?: MotieVoteResult;
+  hidden?: boolean;
+  onToggleHide?: () => void;
 }
 
-export function TimelineCard({ item }: TimelineCardProps) {
+export function TimelineCard({ item, voteResult, hidden, onToggleHide }: TimelineCardProps) {
   const cfg = TYPE_CONFIG[item.type] ?? TYPE_CONFIG.document;
   const href = cfg.href(item.id);
 
@@ -71,7 +102,7 @@ export function TimelineCard({ item }: TimelineCardProps) {
   const allChips = [...commissieChips, ...fractieChips, ...kamerledChips];
 
   return (
-    <div className="group relative flex gap-4">
+    <div className={`group relative flex gap-4 ${hidden ? 'opacity-50' : ''}`}>
       {/* Tijdlijn vertikale lijn + dot */}
       <div className="flex flex-col items-center">
         <div className={`mt-1.5 w-2.5 h-2.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
@@ -92,11 +123,24 @@ export function TimelineCard({ item }: TimelineCardProps) {
                   {item.status}
                 </span>
               )}
+              <VoteResultBadge value={voteResult} />
               <KabApprec value={item.kabinetsappreciatie} />
             </div>
-            <time className="text-xs text-slate-400 flex-shrink-0 mt-0.5">
-              {formatDate(item.date)}
-            </time>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <time className="text-xs text-slate-400 mt-0.5">
+                {formatDate(item.date)}
+              </time>
+              {onToggleHide && (
+                <button
+                  type="button"
+                  onClick={onToggleHide}
+                  title={hidden ? 'Weer tonen' : 'Verbergen'}
+                  className="p-1 rounded-full text-slate-300 hover:text-slate-500 hover:bg-slate-50 transition-colors"
+                >
+                  {hidden ? <Eye size={14} aria-hidden="true" /> : <EyeOff size={14} aria-hidden="true" />}
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Titel */}

@@ -1,22 +1,23 @@
 /**
  * app/dossiers/[id]/page.tsx
- * Dossierdetailpagina — centrale pagina van Politiekemonitor
+ * Dossierdetailpagina - centrale pagina van Politiekemonitor
  */
 
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { getDossier, buildTimeline, TimelineItemType } from '@/lib/tk';
+import { getMotieUitslagenDb } from '@/lib/db';
 import { DossierDetailHeader } from '@/components/DossierDetailHeader';
-import { TimelineCard } from '@/components/TimelineCard';
+import { DossierTimelineList } from '@/components/DossierTimelineList';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// --- Types -------------------------------------------------------------------
 
 interface PageProps {
   params: Promise<{ id: string }>;
   searchParams?: Promise<{ filter?: string }>;
 }
 
-// ─── Filter tabs ─────────────────────────────────────────────────────────────
+// --- Filter tabs -------------------------------------------------------------
 
 const FILTER_TABS: { key: string; label: string; types?: TimelineItemType[] }[] = [
   { key: 'alles',       label: 'Alles' },
@@ -28,7 +29,7 @@ const FILTER_TABS: { key: string; label: string; types?: TimelineItemType[] }[] 
   { key: 'verslag',     label: 'Verslagen',     types: ['verslag'] },
 ];
 
-// ─── Page ────────────────────────────────────────────────────────────────────
+// --- Page --------------------------------------------------------------------
 
 export default async function DossierPage({ params, searchParams }: PageProps) {
   const { id } = await params;
@@ -43,9 +44,17 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
   const filterConfig = FILTER_TABS.find((t) => t.key === activeFilter) ?? FILTER_TABS[0];
 
   const allItems = buildTimeline(dossier);
+
+  // Stemuitslag (aangenomen/verworpen) voor de moties in de tijdlijn erbij zoeken.
+  const motieZaakIds = allItems.filter((item) => item.type === 'motie').map((item) => item.id);
+  const uitslagen = await getMotieUitslagenDb(motieZaakIds);
+  const itemsWithVotes = allItems.map((item) =>
+    item.type === 'motie' ? { ...item, voteResult: uitslagen.get(item.id) } : item
+  );
+
   const filteredItems = filterConfig.types
-    ? allItems.filter((item) => filterConfig.types!.includes(item.type))
-    : allItems;
+    ? itemsWithVotes.filter((item) => filterConfig.types!.includes(item.type))
+    : itemsWithVotes;
 
   // Telt per type voor badges
   const countByType = allItems.reduce<Record<string, number>>((acc, item) => {
@@ -116,31 +125,24 @@ export default async function DossierPage({ params, searchParams }: PageProps) {
         </div>
 
         {/* Items */}
-        {filteredItems.length === 0 ? (
-          <div className="text-center py-12 text-slate-400">
-            <p className="text-base">Geen {filterConfig.label.toLowerCase()} gevonden</p>
-            <p className="text-sm mt-1">Probeer een ander filter</p>
-          </div>
-        ) : (
-          <div>
-            {filteredItems.map((item) => (
-              <TimelineCard key={`${item.type}-${item.id}`} item={item} />
-            ))}
-          </div>
-        )}
+        <DossierTimelineList
+          dossierId={dossier.Id}
+          items={filteredItems}
+          emptyLabel={filterConfig.label.toLowerCase()}
+        />
       </section>
     </div>
   );
 }
 
-// ─── Metadata ────────────────────────────────────────────────────────────────
+// --- Metadata ----------------------------------------------------------------
 
 export async function generateMetadata({ params }: PageProps) {
   const { id } = await params;
   const dossier = await getDossier(id);
   if (!dossier) return { title: 'Dossier niet gevonden' };
   return {
-    title: `${dossier.Titel} — Politiekemonitor`,
+    title: `${dossier.Titel} - Politiekemonitor`,
     description: dossier.Citeertitel ?? dossier.Titel,
   };
 }
