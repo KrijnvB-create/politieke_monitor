@@ -2640,3 +2640,116 @@ p {
     grid-template-columns: 1fr;
   }
 }
+
+/* --- Kamerbrieven list page (app/kamerbrieven) ----------------------------- */
+
+.letter-item-date {
+  display: grid;
+  gap: 2px;
+  padding-top: 2px;
+  padding-left: 15px;
+  border-left: 3px solid var(--tl-violet);
+  text-align: left;
+}
+
+.letter-item-date strong {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--tl-deep-purple);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+
+.letter-item-date span {
+  font-size: 12px;
+  color: var(--tl-ink-500);
+  text-transform: lowercase;
+}
+
+.chip-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--tl-line);
+  border-radius: 999px;
+  background: var(--tl-white);
+  color: var(--tl-ink-700);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.chip-filter span {
+  color: var(--tl-ink-500);
+  font-variant-numeric: tabular-nums;
+}
+
+.chip-filter.active {
+  border-color: rgba(148, 65, 233, 0.45);
+  background: var(--tl-violet-tint);
+  color: var(--tl-indigo);
+}
+
+.chip-filter.active span {
+  color: var(--tl-indigo);
+}
+
+.filter-follow-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--tl-orange);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.filter-follow-link:hover {
+  color: var(--tl-orange-hover);
+}
+
+.new-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
+  margin-bottom: 1px;
+  border-radius: 50%;
+  background: var(--tl-orange);
+}
+
+.new-since-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--tl-orange-tint);
+  color: var(--tl-orange-hover);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.new-since-badge i {
+  display: block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--tl-orange);
+}
+
+@media (max-width: 900px) {
+  .letter-item-date {
+    padding-left: 10px;
+  }
+}
