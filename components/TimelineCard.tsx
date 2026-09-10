@@ -16,7 +16,7 @@ const TYPE_CONFIG: Record<
 > = {
   motie:      { label: 'Motie',       color: 'bg-rose-100 text-rose-700',    dot: 'bg-rose-400',    href: (id) => `/moties/${id}` },
   kamerbrief: { label: 'Kamerbrief',  color: 'bg-teal-100 text-teal-700',    dot: 'bg-teal-400',    href: (id) => `/kamerbrieven/${id}` },
-  debat:      { label: 'Debat',       color: 'bg-orange-100 text-orange-700', dot: 'bg-orange-400', href: (id) => `/debatten/${id}` },
+  debat:      { label: 'Debat',       color: 'bg-orange-100 text-orange-700', dot: 'bg-orange-400', href: (id) => `/agenda/${id}` },
   stemming:   { label: 'Stemming',    color: 'bg-purple-100 text-purple-700', dot: 'bg-purple-400', href: (id) => `/stemmingen/${id}` },
   toezegging: { label: 'Toezegging',  color: 'bg-amber-100 text-amber-700',  dot: 'bg-amber-400',  href: (id) => `/toezeggingen/${id}` },
   verslag:    { label: 'Verslag',     color: 'bg-slate-100 text-slate-600',   dot: 'bg-slate-400',  href: (id) => `/verslagen/${id}` },
