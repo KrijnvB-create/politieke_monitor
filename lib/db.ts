@@ -923,11 +923,10 @@ export async function getDossiersOverviewDb(opts?: { limit?: number }): Promise<
   if (!dossiers || dossiers.length === 0) return [];
   const dossierIds = dossiers.map((d) => d.id);
 
-  const { data: statsRows } = await supabase
-    .rpc('dossiers_overview', { p_dossier_ids: dossierIds })
-    .returns<DossiersOverviewRpcRow[]>();
+  const { data: statsRowsRaw } = await supabase.rpc('dossiers_overview', { p_dossier_ids: dossierIds });
+  const statsRows = (statsRowsRaw ?? []) as DossiersOverviewRpcRow[];
 
-  const statsByDossier = new Map((statsRows ?? []).map((r) => [r.dossier_id, r]));
+  const statsByDossier = new Map(statsRows.map((r) => [r.dossier_id, r]));
 
   return dossiers.map((d) => {
     const stats = statsByDossier.get(d.id);
