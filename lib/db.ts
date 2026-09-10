@@ -773,3 +773,97 @@ export async function getGerelateerdeActiviteitenDb(
   activiteiten.sort((a, b) => new Date(b.aanvangstijd ?? 0).getTime() - new Date(a.aanvangstijd ?? 0).getTime());
   return activiteiten.slice(0, opts?.limit ?? 3);
 }
+
+
+// --- Kamerbrieven-overzicht: afzender + dossier-verrijking ------------------
+
+/** Documentsoorten die op de Kamerbrieven-pagina getoond worden (brieven van
+ * het kabinet aan de Kamer, plus de directe reacties/antwoorden daarop). Een
+ * los "Beslisnota"-type bestaat niet in de Tweede Kamer-data; de vier reeele
+ * meest voorkomende soorten in deze categorie worden hier gebruikt. */
+const KAMERBRIEF_SOORTEN = [
+  'Brief regering',
+  'Antwoord schriftelijke vragen',
+  'Antwoord schriftelijke vragen (nader)',
+  'Nota n.a.v. het (nader/tweede nader/enz.) verslag',
+  'Mededeling (uitstel antwoord)',
+];
+
+export interface DbKamerstukdossierLite {
+  id: string;
+  titel: string | null;
+  nummer: number | null;
+}
+
+export interface KamerbriefOverviewRow {
+  doc: DbDocument;
+  afzender: string | null;
+  dossier: DbKamerstukdossierLite | null;
+}
+
+/** Zet "minister van X" / "staatssecretaris van X" om naar "Ministerie van X".
+ * Andere functies (griffier, commissievoorzitter, ...) leveren geen afzender op:
+ * die horen niet bij het "welk ministerie stuurde dit"-filter. */
+function ministerieLabel(functie: string | null): string | null {
+  if (!functie) return null;
+  const match = /^(minister|staatssecretaris)\s+van\s+(.+)$/i.exec(functie.trim());
+  if (!match) return null;
+  return `Ministerie van ${match[2]}`;
+}
+
+/** Kamerbrieven (+ antwoorden/nota's/uitstelberichten) met afzender-ministerie
+ * en gekoppeld dossier erbij, voor de Kamerbrieven-overzichtspagina. */
+export async function getKamerbrievenOverviewDb(opts?: { limit?: number }): Promise<KamerbriefOverviewRow[]> {
+  const supabase = await createClient();
+
+  const { data } = await supabase
+    .from('tk_documenten')
+    .select('*')
+    .eq('verwijderd', false)
+    .in('soort', KAMERBRIEF_SOORTEN)
+    .order('datum', { ascending: false, nullsFirst: false })
+    .limit(opts?.limit ?? 400)
+    .returns<DbDocument[]>();
+
+  const documenten = data ?? [];
+  if (documenten.length === 0) return [];
+
+  const documentIds = documenten.map((d) => d.id);
+  const dossierIds = Array.from(
+    new Set(documenten.map((d) => d.kamerstukdossier_id).filter((id): id is string => !!id))
+  );
+
+  const [actorResult, dossierResult] = await Promise.all([
+    supabase
+      .from('tk_document_actoren')
+      .select('document_id, functie')
+      .in('document_id', documentIds)
+      .eq('relatie', 'Eerste ondertekenaar')
+      .eq('verwijderd', false)
+      .returns<{ document_id: string; functie: string | null }[]>(),
+    dossierIds.length
+      ? supabase
+          .from('tk_kamerstukdossiers')
+          .select('id, titel, nummer')
+          .in('id', dossierIds)
+          .returns<DbKamerstukdossierLite[]>()
+      : Promise.resolve({ data: [] as DbKamerstukdossierLite[] }),
+  ]);
+
+  const afzenderByDoc = new Map<string, string>();
+  for (const row of actorResult.data ?? []) {
+    const label = ministerieLabel(row.functie);
+    if (label) afzenderByDoc.set(row.document_id, label);
+  }
+
+  const dossierById = new Map<string, DbKamerstukdossierLite>();
+  for (const row of dossierResult.data ?? []) {
+    dossierById.set(row.id, row);
+  }
+
+  return documenten.map((doc) => ({
+    doc,
+    afzender: afzenderByDoc.get(doc.id) ?? null,
+    dossier: doc.kamerstukdossier_id ? dossierById.get(doc.kamerstukdossier_id) ?? null : null,
+  }));
+}
