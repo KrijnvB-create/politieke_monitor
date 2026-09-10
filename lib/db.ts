@@ -172,7 +172,7 @@ interface ActiviteitDeelnemerRow {
 export async function getActiviteitenVanPersoonDb(
   persoonId: string,
   opts?: { limit?: number }
-): Promise<(DbActiviteit & { relatie: string | null })[]> {
+): Promise<(DbActiviteit & { relatie: string | null; functie: string | null })[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from('tk_activiteit_deelnemers')
@@ -183,7 +183,7 @@ export async function getActiviteitenVanPersoonDb(
 
   const rows = (data ?? [])
     .filter((r): r is ActiviteitDeelnemerRow & { activiteit: DbActiviteit } => !!r.activiteit && !r.activiteit.verwijderd)
-    .map((r) => ({ ...r.activiteit, relatie: r.relatie }));
+    .map((r) => ({ ...r.activiteit, relatie: r.relatie, functie: r.functie }));
 
   const deduped = uniqueById(rows);
   deduped.sort((a, b) => new Date(b.aanvangstijd ?? 0).getTime() - new Date(a.aanvangstijd ?? 0).getTime());
@@ -948,4 +948,278 @@ export async function getDossiersOverviewDb(opts?: { limit?: number }): Promise<
           : null,
     };
   });
+}
+
+
+// --- Kamerlid-detailpagina: statistieken + tijdlijn-items -------------------
+
+export interface PersoonTopDossier {
+  id: string;
+  titel: string | null;
+  nummer: number | null;
+  count: number;
+}
+
+export interface PersoonStats {
+  motieTotaal: number;
+  motieAangenomen: number;
+  motieVerworpen: number;
+  vraagTotaal: number;
+  amendementTotaal: number;
+  amendementAangenomen: number;
+  amendementVerworpen: number;
+  toezeggingTotaal: number;
+  toezeggingOpen: number;
+  toezeggingLaat: number;
+  debatTotaal: number;
+  aankomendTotaal: number;
+  fractieMotieTotaal: number;
+  fractieMotieAangenomen: number;
+  lidSinds: string | null;
+  topDossiers: PersoonTopDossier[];
+  nextActiviteit: { id: string; onderwerp: string | null; aanvangstijd: string | null; locatie: string | null } | null;
+}
+
+interface PersoonStatsRpcRow {
+  motie_totaal: number;
+  motie_aangenomen: number;
+  motie_verworpen: number;
+  vraag_totaal: number;
+  amendement_totaal: number;
+  amendement_aangenomen: number;
+  amendement_verworpen: number;
+  toezegging_totaal: number;
+  toezegging_open: number;
+  toezegging_laat: number;
+  debat_totaal: number;
+  aankomend_totaal: number;
+  fractie_motie_totaal: number;
+  fractie_motie_aangenomen: number;
+  lid_sinds: string | null;
+  top_dossiers: PersoonTopDossier[] | null;
+  next_activiteit: { id: string; onderwerp: string | null; aanvangstijd: string | null; locatie: string | null } | null;
+}
+
+/** Afgeleide statistieken voor de Kamerlid-detailpagina (moties, vragen, toezeggingen,
+ * debatten, amendementen, meest actieve dossiers, eerstvolgend optreden). Draait via de
+ * `persoon_stats` Postgres-functie omdat de onderliggende tellingen (zaak_actoren,
+ * besluit_zaken, activiteit_deelnemers) voor drukke Kamerleden makkelijk honderden rijen
+ * beslaan en anders per teller een losse round-trip + de 1000-rijen REST-afkap zouden
+ * riskeren -- zie dezelfde afweging bij dossiers_overview. */
+export async function getPersoonStatsDb(persoonId: string): Promise<PersoonStats | null> {
+  const supabase = await createClient();
+  const { data } = await supabase.rpc('persoon_stats', { p_persoon_id: persoonId });
+  const row = data as PersoonStatsRpcRow | null;
+  if (!row) return null;
+
+  return {
+    motieTotaal: row.motie_totaal ?? 0,
+    motieAangenomen: row.motie_aangenomen ?? 0,
+    motieVerworpen: row.motie_verworpen ?? 0,
+    vraagTotaal: row.vraag_totaal ?? 0,
+    amendementTotaal: row.amendement_totaal ?? 0,
+    amendementAangenomen: row.amendement_aangenomen ?? 0,
+    amendementVerworpen: row.amendement_verworpen ?? 0,
+    toezeggingTotaal: row.toezegging_totaal ?? 0,
+    toezeggingOpen: row.toezegging_open ?? 0,
+    toezeggingLaat: row.toezegging_laat ?? 0,
+    debatTotaal: row.debat_totaal ?? 0,
+    aankomendTotaal: row.aankomend_totaal ?? 0,
+    fractieMotieTotaal: row.fractie_motie_totaal ?? 0,
+    fractieMotieAangenomen: row.fractie_motie_aangenomen ?? 0,
+    lidSinds: row.lid_sinds ?? null,
+    topDossiers: row.top_dossiers ?? [],
+    nextActiviteit: row.next_activiteit?.id ? row.next_activiteit : null,
+  };
+}
+
+interface ZaakActorZaakRow {
+  zaak: DbZaak | null;
+}
+
+/** Zaken (indiener/medeindiener) van een persoon, gefilterd op soort, met stemuitslag
+ * (via tk_besluit_zaken/tk_besluiten/tk_stemmingen, zelfde logica als getActiviteitDb)
+ * en het gekoppelde dossier erbij. Gebruikt voor moties en amendementen op de
+ * Kamerlid-detailpagina. */
+async function getZakenMetUitslagVanPersoonDb(
+  persoonId: string,
+  soorten: string[],
+  opts?: { limit?: number }
+): Promise<(DbZaak & { uitslag: MotieUitslag | null; dossier: DbKamerstukdossierLite | null })[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('tk_zaak_actoren')
+    .select('zaak:tk_zaken(*)')
+    .eq('persoon_id', persoonId)
+    .eq('verwijderd', false)
+    .in('relatie', ['Indiener', 'Medeindiener'])
+    .returns<ZaakActorZaakRow[]>();
+
+  const zaken = uniqueById(
+    (data ?? [])
+      .map((r) => r.zaak)
+      .filter((z): z is DbZaak => !!z && !z.verwijderd && soorten.includes(z.soort ?? ''))
+  );
+  if (zaken.length === 0) return [];
+
+  const zaakIds = zaken.map((z) => z.id);
+  const dossierIds = Array.from(
+    new Set(zaken.map((z) => z.kamerstukdossier_id).filter((id): id is string => !!id))
+  );
+
+  const [{ data: besluitZaakRows }, dossierResult] = await Promise.all([
+    supabase
+      .from('tk_besluit_zaken')
+      .select('zaak_id, besluit:tk_besluiten(*)')
+      .in('zaak_id', zaakIds)
+      .returns<{ zaak_id: string; besluit: DbBesluit | null }[]>(),
+    dossierIds.length
+      ? supabase.from('tk_kamerstukdossiers').select('id, titel, nummer').in('id', dossierIds).returns<DbKamerstukdossierLite[]>()
+      : Promise.resolve({ data: [] as DbKamerstukdossierLite[] }),
+  ]);
+
+  const besluitIds = uniqueById(
+    (besluitZaakRows ?? []).map((r) => r.besluit).filter((b): b is DbBesluit => !!b && !b.verwijderd)
+  ).map((b) => b.id);
+
+  const { data: stemmingRows } = besluitIds.length
+    ? await supabase
+        .from('tk_stemmingen')
+        .select('besluit_id, soort, fractie_grootte')
+        .in('besluit_id', besluitIds)
+        .eq('verwijderd', false)
+        .returns<{ besluit_id: string; soort: string | null; fractie_grootte: number | null }[]>()
+    : { data: [] as { besluit_id: string; soort: string | null; fractie_grootte: number | null }[] };
+
+  const stemmingenByBesluit = new Map<string, { soort: string | null; fractie_grootte: number | null }[]>();
+  for (const s of stemmingRows ?? []) {
+    const list = stemmingenByBesluit.get(s.besluit_id) ?? [];
+    list.push(s);
+    stemmingenByBesluit.set(s.besluit_id, list);
+  }
+
+  // Zelfde regel als getActiviteitDb: een Besluit telt alleen als echte stemuitslag
+  // als het Soort een afgeronde stemming beschrijft of er daadwerkelijk Stemmingen
+  // aan hangen -- anders lijkt elke ingediende motie/amendement al "gestemd".
+  const STEM_RESULT_SOORTEN = new Set(['Stemmen - aangenomen', 'Stemmen - verworpen', 'Stemmen - niet aangenomen']);
+  const uitslagByZaak = new Map<string, MotieUitslag>();
+
+  for (const row of besluitZaakRows ?? []) {
+    if (!row.besluit || row.besluit.verwijderd) continue;
+    const stemmingen = stemmingenByBesluit.get(row.besluit.id) ?? [];
+    const isEchteUitslag = stemmingen.length > 0 || STEM_RESULT_SOORTEN.has(row.besluit.soort ?? '');
+    if (!isEchteUitslag) continue;
+
+    let voor = 0;
+    let tegen = 0;
+    let onthouden = 0;
+    for (const s of stemmingen) {
+      const soort = (s.soort ?? '').toLowerCase();
+      const weight = s.fractie_grootte ?? 1;
+      if (soort.includes('voor')) voor += weight;
+      else if (soort.includes('tegen')) tegen += weight;
+      else onthouden += weight;
+    }
+
+    const existing = uitslagByZaak.get(row.zaak_id);
+    if (existing && existing.voor + existing.tegen + existing.onthouden > 0 && stemmingen.length === 0) continue;
+
+    const soortLabel = (row.besluit.soort ?? '').toLowerCase().startsWith('stemmen -')
+      ? row.besluit.soort!.slice(row.besluit.soort!.indexOf('-') + 1).trim().replace(/^./, (c) => c.toUpperCase())
+      : null;
+
+    uitslagByZaak.set(row.zaak_id, {
+      besluitId: row.besluit.id,
+      result: soortLabel ?? (voor + tegen > 0 ? (voor >= tegen ? 'Aangenomen' : 'Verworpen') : (row.besluit.status ?? 'Onbekend')),
+      voor,
+      tegen,
+      onthouden,
+    });
+  }
+
+  const dossierById = new Map((dossierResult.data ?? []).map((d) => [d.id, d]));
+
+  const result = zaken.map((z) => ({
+    ...z,
+    uitslag: uitslagByZaak.get(z.id) ?? null,
+    dossier: z.kamerstukdossier_id ? dossierById.get(z.kamerstukdossier_id) ?? null : null,
+  }));
+
+  result.sort((a, b) => new Date(b.gestart_op ?? 0).getTime() - new Date(a.gestart_op ?? 0).getTime());
+  return result.slice(0, opts?.limit ?? 150);
+}
+
+/** Moties waar deze persoon indiener of medeindiener van is, met stemuitslag. */
+export function getMotiesVanPersoonDb(persoonId: string, opts?: { limit?: number }) {
+  return getZakenMetUitslagVanPersoonDb(persoonId, ['Motie'], opts);
+}
+
+/** Amendementen waar deze persoon indiener of medeindiener van is, met stemuitslag. */
+export function getAmendementenVanPersoonDb(persoonId: string, opts?: { limit?: number }) {
+  return getZakenMetUitslagVanPersoonDb(persoonId, ['Amendement'], opts);
+}
+
+/** Schriftelijke en mondelinge vragen waar deze persoon indiener/medeindiener van is. */
+export async function getVragenVanPersoonDb(
+  persoonId: string,
+  opts?: { limit?: number }
+): Promise<(DbZaak & { dossier: DbKamerstukdossierLite | null })[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('tk_zaak_actoren')
+    .select('zaak:tk_zaken(*)')
+    .eq('persoon_id', persoonId)
+    .eq('verwijderd', false)
+    .in('relatie', ['Indiener', 'Medeindiener'])
+    .returns<ZaakActorZaakRow[]>();
+
+  const zaken = uniqueById(
+    (data ?? [])
+      .map((r) => r.zaak)
+      .filter((z): z is DbZaak => !!z && !z.verwijderd && ['Schriftelijke vragen', 'Mondelinge vragen'].includes(z.soort ?? ''))
+  );
+
+  const dossierIds = Array.from(new Set(zaken.map((z) => z.kamerstukdossier_id).filter((id): id is string => !!id)));
+  const { data: dossierRows } = dossierIds.length
+    ? await supabase.from('tk_kamerstukdossiers').select('id, titel, nummer').in('id', dossierIds).returns<DbKamerstukdossierLite[]>()
+    : { data: [] as DbKamerstukdossierLite[] };
+  const dossierById = new Map((dossierRows ?? []).map((d) => [d.id, d]));
+
+  const result = zaken.map((z) => ({
+    ...z,
+    dossier: z.kamerstukdossier_id ? dossierById.get(z.kamerstukdossier_id) ?? null : null,
+  }));
+
+  result.sort((a, b) => new Date(b.gestart_op ?? 0).getTime() - new Date(a.gestart_op ?? 0).getTime());
+  return result.slice(0, opts?.limit ?? 150);
+}
+
+/** Toezeggingen die horen bij activiteiten waar deze persoon deelnemer van was
+ * (gekoppeld via het Kamer-nummer van de activiteit, net als getToezeggingenVoorActiviteitDb). */
+export async function getToezeggingenVanPersoonDb(
+  persoonId: string,
+  opts?: { limit?: number }
+): Promise<DbToezegging[]> {
+  const supabase = await createClient();
+  const { data: activiteitRows } = await supabase
+    .from('tk_activiteit_deelnemers')
+    .select('activiteit:tk_activiteiten(nummer)')
+    .eq('persoon_id', persoonId)
+    .eq('verwijderd', false)
+    .returns<{ activiteit: { nummer: string | null } | null }[]>();
+
+  const nummers = Array.from(
+    new Set((activiteitRows ?? []).map((r) => r.activiteit?.nummer).filter((n): n is string => !!n))
+  );
+  if (nummers.length === 0) return [];
+
+  const { data } = await supabase
+    .from('tk_toezeggingen')
+    .select('*')
+    .in('activiteit_nummer', nummers)
+    .eq('verwijderd', false)
+    .order('aanmaakdatum', { ascending: false, nullsFirst: false })
+    .returns<DbToezegging[]>();
+
+  return (data ?? []).slice(0, opts?.limit ?? 150);
 }
