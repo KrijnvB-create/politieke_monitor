@@ -574,12 +574,14 @@ export async function getActiviteiten(opts?: {
     skip?: number;
     soort?: string;
     vanaf?: string;
+    tot?: string;
     search?: string;
     orderby?: 'asc' | 'desc';
 }): Promise<TKListResponse<Activiteit>> {
     const filters = ['Verwijderd eq false'];
     if (opts?.soort) filters.push(`Soort eq '${opts.soort}'`);
     if (opts?.vanaf) filters.push(`Aanvangstijd ge ${opts.vanaf}`);
+    if (opts?.tot) filters.push(`Aanvangstijd le ${opts.tot}`);
     if (opts?.search) filters.push(`contains(Onderwerp,'${opts.search.replace(/'/g, "''")}')`);
 
   const params: Record<string, string> = {
@@ -1125,19 +1127,22 @@ export async function getAgendaOverview(
 export async function getGeschiedenisOverview(
     query?: string
   ): Promise<{ items: MonitorItem[]; apiOk: boolean }> {
-    // Zelfde aanpak als getAgendaOverview maar met een veel groter venster terug
-    // (30 dagen) en alleen de historie: chronologisch (oplopend) opvragen zodat
-    // de 250-item cap niet wordt opgevuld met verre toekomstige activiteiten,
-    // en daarna omdraaien voor nieuwste-eerst.
+    // Anders dan getAgendaOverview: Geschiedenis toont uitsluitend het verleden
+    // en moet per definitie met de MEEST RECENTE gebeurtenissen beginnen.
+    // Aflopend sorteren met een bovengrens van "nu" garandeert dat de top-250
+    // altijd bij vandaag begint, ongeacht hoeveel activiteiten er de afgelopen
+    // maand waren. (Voorheen: oplopend vanaf 30 dagen terug zonder bovengrens
+    // -- zodra er in dat venster meer dan 250 activiteiten waren, werd de cap
+    // al opgebruikt voor de 250 oudste, en vielen de laatste 1-2 weken volledig
+    // weg. Bij ~440 activiteiten per maand gebeurde dat structureel.)
     const data = await getActiviteiten({
                       top: MAX_ACTIVITEITEN_TOP,
                       search: query,
-                      vanaf: isoDateDaysAgo(30),
-                      orderby: 'asc',
+                      tot: new Date().toISOString(),
+                      orderby: 'desc',
         });
-    const { past } = splitPlannedPast(data.value);
     return {
-          items: past.reverse().map((a) => activiteitToMonitorItem(a)),
+          items: data.value.map((a) => activiteitToMonitorItem(a)),
           apiOk: data.value.length > 0,
     };
 }
