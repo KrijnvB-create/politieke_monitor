@@ -2852,3 +2852,86 @@ p {
 .pill-toggle-group button.active .count {
   color: var(--tl-on-dark-muted);
 }
+
+/* --- Mijn kompas (dashboard) ------------------------------------------------- */
+
+.kompas-stat {
+  all: unset;
+  display: grid;
+  gap: 5px;
+  padding: 18px 20px;
+  background: var(--tl-deep-purple);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s ease;
+}
+
+.kompas-stat:hover {
+  background: var(--tl-purple-hover);
+}
+
+.kompas-stat:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.kompas-stat.active {
+  background: var(--tl-orange);
+}
+
+.kompas-stat strong {
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--tl-on-dark);
+  font-variant-numeric: tabular-nums;
+}
+
+.kompas-stat span {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tl-on-dark-muted);
+}
+
+.kompas-stat small {
+  font-size: 12px;
+  color: var(--tl-on-dark-muted);
+}
+
+.kompas-stat.active strong,
+.kompas-stat.active span,
+.kompas-stat.active small {
+  color: var(--tl-dark);
+}
+
+.kompas-icon-button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--tl-line);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--tl-ink-500);
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.kompas-icon-button:hover {
+  border-color: var(--tl-violet);
+  color: var(--tl-violet);
+}
+
+.kompas-icon-button.active {
+  border-color: var(--tl-orange);
+  background: var(--tl-orange-tint);
+  color: var(--tl-orange-hover);
+}
+
+.kompas-icon-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
