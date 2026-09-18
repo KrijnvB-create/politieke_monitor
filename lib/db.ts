@@ -16,6 +16,7 @@
 
 import { createClient } from './supabase/server';
 import { formatDate, type MonitorItem } from './tk';
+import type { SavedItemKind } from './saved-items';
 
 // --- Rijtypes (spiegelen public schema in tk_data_model migration) ----------
 
@@ -1355,4 +1356,462 @@ export async function getDebattenVoorDossierDb(
 
   debatten.sort((a, b) => new Date(b.aanvangstijd ?? 0).getTime() - new Date(a.aanvangstijd ?? 0).getTime());
   return debatten.slice(0, opts?.limit ?? 100);
+}
+
+
+// --- Mijn Kompas: gepersonaliseerde feed over gevolgde dossiers en Kamerleden -
+
+export type KompasItemKind = 'agenda' | 'debat' | 'brief' | 'motie' | 'vraag' | 'toezegging';
+
+export interface KompasReason {
+  type: 'dossier' | 'kamerlid' | 'bewaard';
+  id: string;
+  label: string;
+}
+
+export interface KompasItem {
+  key: string;
+  kind: KompasItemKind;
+  date: string | null;
+  title: string;
+  href: string | null;
+  statusLabel?: string;
+  statusTone?: 'positive' | 'negative' | 'neutral';
+  dossier: DbKamerstukdossierLite | null;
+  persoon: { id: string; naam: string } | null;
+  reasons: KompasReason[];
+  derived: boolean;
+  deadlineLabel?: string;
+  deadlineLate?: boolean;
+  bookmarked: boolean;
+  savedKind?: SavedItemKind;
+  savedRefId?: string;
+}
+
+export interface KompasFollowedDossier {
+  id: string;
+  titel: string | null;
+  nummer: number | null;
+}
+
+export interface KompasFollowedPersoon {
+  id: string;
+  naam: string;
+  fractieAfkorting: string | null;
+}
+
+export interface KompasFeed {
+  items: KompasItem[];
+  followedDossiers: KompasFollowedDossier[];
+  followedPersonen: KompasFollowedPersoon[];
+}
+
+/** Zelfde vervaldatum-naar-status-tekst logica als de Kamerlid-detailpagina. */
+function kompasToezeggingDeadline(t: DbToezegging): { label: string; late: boolean } {
+  if (t.status === 'Afgedaan') return { label: 'Afgedaan', late: false };
+  if (!t.datum_nakoming) return { label: t.status ?? 'Openstaand', late: false };
+
+  const vandaag = todayIso();
+  if (t.datum_nakoming >= vandaag) return { label: `Voor ${formatDate(t.datum_nakoming)}`, late: false };
+
+  const dagen = Math.round((Date.now() - new Date(t.datum_nakoming).getTime()) / 86400000);
+  if (dagen < 7) return { label: `${dagen} ${dagen === 1 ? 'dag' : 'dagen'} te laat`, late: true };
+  const weken = Math.round(dagen / 7);
+  return { label: `${weken} ${weken === 1 ? 'week' : 'weken'} te laat`, late: true };
+}
+
+/** Alles wat een gebruiker volgt (gevolgde dossiers + Kamerleden uit saved_items)
+ * samengevoegd tot een uniforme feed: moties, kamerbrieven, vragen, debatten/
+ * agendapunten en toezeggingen, plus losse bewaarde items die niet al via een
+ * volgprofiel binnenkwamen. Eenzelfde item kan om meerdere redenen meedoen
+ * (bv. een motie van een gevolgd Kamerlid in een gevolgd dossier); die redenen
+ * worden dan samengevoegd op hetzelfde item in plaats van dubbel getoond. */
+export async function getMijnKompasFeedDb(userId: string): Promise<KompasFeed> {
+  const supabase = await createClient();
+
+  const { data: savedRows } = await supabase
+    .from('saved_items')
+    .select('kind, ref_id')
+    .eq('user_id', userId)
+    .returns<{ kind: string; ref_id: string }[]>();
+
+  const saved = savedRows ?? [];
+  const dossierIds = saved.filter((s) => s.kind === 'dossier').map((s) => s.ref_id);
+  const persoonIds = saved.filter((s) => s.kind === 'kamerlid').map((s) => s.ref_id);
+  const bookmarkedKeys = new Set(
+    saved.filter((s) => s.kind !== 'dossier' && s.kind !== 'kamerlid').map((s) => `${s.kind}:${s.ref_id}`)
+  );
+
+  const [dossierRowsResult, followedPersonenRaw] = await Promise.all([
+    dossierIds.length
+      ? supabase.from('tk_kamerstukdossiers').select('id, titel, nummer').in('id', dossierIds).returns<KompasFollowedDossier[]>()
+      : Promise.resolve({ data: [] as KompasFollowedDossier[] }),
+    Promise.all(persoonIds.map((id) => getPersoonDb(id))),
+  ]);
+
+  const followedDossiers = dossierRowsResult.data ?? [];
+  const followedPersonenList = followedPersonenRaw.filter((p): p is PersoonMetFractie => !!p);
+  const followedPersonen: KompasFollowedPersoon[] = followedPersonenList.map((p) => ({
+    id: p.id,
+    naam: persoonNaamDb(p) || p.achternaam || 'Kamerlid',
+    fractieAfkorting: p.fractie?.afkorting ?? p.fractie?.naam_nl ?? null,
+  }));
+
+  const itemsByKey = new Map<string, KompasItem>();
+  const nowIso = new Date().toISOString();
+
+  function upsert(item: KompasItem) {
+    const existing = itemsByKey.get(item.key);
+    if (!existing) {
+      itemsByKey.set(item.key, item);
+      return;
+    }
+    for (const r of item.reasons) {
+      if (!existing.reasons.some((er) => er.type === r.type && er.id === r.id)) existing.reasons.push(r);
+    }
+    if (!existing.dossier && item.dossier) existing.dossier = item.dossier;
+    if (!existing.persoon && item.persoon) existing.persoon = item.persoon;
+  }
+
+  // --- Per gevolgd dossier: zaken (moties/vragen), documenten (kamerbrieven), debatten
+  const dossierData = await Promise.all(
+    followedDossiers.map(async (d) => {
+      const [{ data: zaken }, { data: docs }, debatten] = await Promise.all([
+        supabase.from('tk_zaken').select('*').eq('kamerstukdossier_id', d.id).eq('verwijderd', false).returns<DbZaak[]>(),
+        supabase
+          .from('tk_documenten')
+          .select('*')
+          .eq('kamerstukdossier_id', d.id)
+          .eq('verwijderd', false)
+          .ilike('soort', '%Brief%')
+          .order('datum', { ascending: false, nullsFirst: false })
+          .limit(60)
+          .returns<DbDocument[]>(),
+        getDebattenVoorDossierDb(d.id, { limit: 40 }),
+      ]);
+      return { dossier: d, zaken: zaken ?? [], docs: docs ?? [], debatten };
+    })
+  );
+
+  const allDossierMotieIds = dossierData.flatMap((d) => d.zaken.filter((z) => z.soort === 'Motie').map((z) => z.id));
+  const dossierUitslagen = await getMotieUitslagenDb(allDossierMotieIds);
+
+  for (const { dossier, zaken, docs, debatten } of dossierData) {
+    const dossierLite: DbKamerstukdossierLite = { id: dossier.id, titel: dossier.titel, nummer: dossier.nummer };
+    const reason: KompasReason = { type: 'dossier', id: dossier.id, label: `Dossier gevolgd: ${dossier.titel ?? 'dossier'}` };
+
+    for (const z of zaken) {
+      if (z.soort === 'Motie') {
+        const uitslag = dossierUitslagen.get(z.id) ?? null;
+        upsert({
+          key: `motie:${z.id}`,
+          kind: 'motie',
+          date: z.gestart_op,
+          title: z.titel ?? z.onderwerp ?? 'Motie',
+          href: `/dossiers/${dossier.id}`,
+          statusLabel: uitslag && uitslag.result !== 'Onbekend' ? uitslag.result : undefined,
+          statusTone: uitslag?.result === 'Aangenomen' ? 'positive' : uitslag?.result === 'Verworpen' ? 'negative' : 'neutral',
+          dossier: dossierLite,
+          persoon: null,
+          reasons: [reason],
+          derived: false,
+          bookmarked: false,
+          savedKind: 'motie',
+          savedRefId: z.id,
+        });
+      } else if (['Schriftelijke vragen', 'Mondelinge vragen'].includes(z.soort ?? '')) {
+        upsert({
+          key: `vraag:${z.id}`,
+          kind: 'vraag',
+          date: z.gestart_op,
+          title: z.titel ?? z.onderwerp ?? 'Vraag',
+          href: `/dossiers/${dossier.id}`,
+          dossier: dossierLite,
+          persoon: null,
+          reasons: [reason],
+          derived: false,
+          bookmarked: false,
+          savedKind: 'vraag',
+          savedRefId: z.id,
+        });
+      }
+    }
+
+    for (const doc of docs) {
+      upsert({
+        key: `brief:${doc.id}`,
+        kind: 'brief',
+        date: doc.datum,
+        title: doc.titel ?? doc.onderwerp ?? 'Kamerbrief',
+        href: `/kamerbrieven/${doc.id}`,
+        dossier: dossierLite,
+        persoon: null,
+        reasons: [reason],
+        derived: false,
+        bookmarked: false,
+        savedKind: 'kamerbrief',
+        savedRefId: doc.id,
+      });
+    }
+
+    for (const a of debatten) {
+      const isFuture = !!a.aanvangstijd && a.aanvangstijd >= nowIso;
+      upsert({
+        key: `activiteit:${a.id}`,
+        kind: isFuture ? 'agenda' : 'debat',
+        date: a.aanvangstijd,
+        title: a.onderwerp ?? a.soort ?? 'Debat',
+        href: `/agenda/${a.id}`,
+        statusLabel: a.status ?? undefined,
+        dossier: dossierLite,
+        persoon: null,
+        reasons: [reason],
+        derived: true,
+        bookmarked: false,
+        savedKind: 'activiteit',
+        savedRefId: a.id,
+      });
+    }
+  }
+
+  // --- Per gevolgd Kamerlid: activiteiten, moties, vragen, toezeggingen
+  await Promise.all(
+    followedPersonenList.map(async (p) => {
+      const naam = persoonNaamDb(p) || p.achternaam || 'Kamerlid';
+      const reason: KompasReason = { type: 'kamerlid', id: p.id, label: `Kamerlid gevolgd: ${naam}` };
+      const persoonRef = { id: p.id, naam };
+
+      const [activiteiten, moties, vragen, toezeggingen] = await Promise.all([
+        getActiviteitenVanPersoonDb(p.id, { limit: 40 }),
+        getMotiesVanPersoonDb(p.id, { limit: 60 }),
+        getVragenVanPersoonDb(p.id, { limit: 60 }),
+        getToezeggingenVanPersoonDb(p.id, { limit: 60 }),
+      ]);
+
+      for (const a of activiteiten) {
+        const isFuture = !!a.aanvangstijd && a.aanvangstijd >= nowIso;
+        upsert({
+          key: `activiteit:${a.id}`,
+          kind: isFuture ? 'agenda' : 'debat',
+          date: a.aanvangstijd,
+          title: a.onderwerp ?? a.soort ?? 'Debat',
+          href: `/agenda/${a.id}`,
+          statusLabel: a.status ?? undefined,
+          dossier: null,
+          persoon: persoonRef,
+          reasons: [reason],
+          derived: true,
+          bookmarked: false,
+          savedKind: 'activiteit',
+          savedRefId: a.id,
+        });
+      }
+
+      for (const m of moties) {
+        const result = m.uitslag?.result;
+        upsert({
+          key: `motie:${m.id}`,
+          kind: 'motie',
+          date: m.gestart_op,
+          title: m.titel ?? m.onderwerp ?? 'Motie',
+          href: m.dossier ? `/dossiers/${m.dossier.id}` : m.kamerstukdossier_id ? `/dossiers/${m.kamerstukdossier_id}` : null,
+          statusLabel: result && result !== 'Onbekend' ? result : undefined,
+          statusTone: result === 'Aangenomen' ? 'positive' : result === 'Verworpen' ? 'negative' : 'neutral',
+          dossier: m.dossier,
+          persoon: persoonRef,
+          reasons: [reason],
+          derived: false,
+          bookmarked: false,
+          savedKind: 'motie',
+          savedRefId: m.id,
+        });
+      }
+
+      for (const v of vragen) {
+        upsert({
+          key: `vraag:${v.id}`,
+          kind: 'vraag',
+          date: v.gestart_op,
+          title: v.titel ?? v.onderwerp ?? 'Vraag',
+          href: v.dossier ? `/dossiers/${v.dossier.id}` : v.kamerstukdossier_id ? `/dossiers/${v.kamerstukdossier_id}` : null,
+          dossier: v.dossier,
+          persoon: persoonRef,
+          reasons: [reason],
+          derived: false,
+          bookmarked: false,
+          savedKind: 'vraag',
+          savedRefId: v.id,
+        });
+      }
+
+      for (const t of toezeggingen) {
+        const deadline = kompasToezeggingDeadline(t);
+        upsert({
+          key: `toezegging:${t.id}`,
+          kind: 'toezegging',
+          date: t.aanmaakdatum,
+          title: t.tekst ? truncateText(t.tekst, 140) : 'Toezegging',
+          href: null,
+          dossier: null,
+          persoon: persoonRef,
+          reasons: [reason],
+          derived: true,
+          deadlineLabel: deadline.label,
+          deadlineLate: deadline.late,
+          bookmarked: false,
+          savedKind: 'toezegging',
+          savedRefId: t.id,
+        });
+      }
+    })
+  );
+
+  // --- Losse bewaarde items die niet al via een gevolgd dossier/Kamerlid binnenkwamen
+  const missingByKind = new Map<string, string[]>();
+  for (const s of saved) {
+    if (s.kind === 'dossier' || s.kind === 'kamerlid') continue;
+    const itemKey = `${s.kind === 'kamerbrief' ? 'brief' : s.kind}:${s.ref_id}`;
+    if (itemsByKey.has(itemKey)) continue;
+    const list = missingByKind.get(s.kind) ?? [];
+    list.push(s.ref_id);
+    missingByKind.set(s.kind, list);
+  }
+
+  if (missingByKind.size > 0) {
+    const bewaardReason: KompasReason = { type: 'bewaard', id: 'bewaard', label: 'Bewaard' };
+
+    await Promise.all([
+      (async () => {
+        const ids = missingByKind.get('motie');
+        if (!ids?.length) return;
+        const [{ data }, uitslagen] = await Promise.all([
+          supabase.from('tk_zaken').select('*').in('id', ids).returns<DbZaak[]>(),
+          getMotieUitslagenDb(ids),
+        ]);
+        const dossierIdsHere = Array.from(new Set((data ?? []).map((z) => z.kamerstukdossier_id).filter((v): v is string => !!v)));
+        const { data: dossierRows } = dossierIdsHere.length
+          ? await supabase.from('tk_kamerstukdossiers').select('id, titel, nummer').in('id', dossierIdsHere).returns<DbKamerstukdossierLite[]>()
+          : { data: [] as DbKamerstukdossierLite[] };
+        const dossierById = new Map((dossierRows ?? []).map((d) => [d.id, d]));
+        for (const z of data ?? []) {
+          const uitslag = uitslagen.get(z.id) ?? null;
+          upsert({
+            key: `motie:${z.id}`,
+            kind: 'motie',
+            date: z.gestart_op,
+            title: z.titel ?? z.onderwerp ?? 'Motie',
+            href: z.kamerstukdossier_id ? `/dossiers/${z.kamerstukdossier_id}` : null,
+            statusLabel: uitslag && uitslag.result !== 'Onbekend' ? uitslag.result : undefined,
+            statusTone: uitslag?.result === 'Aangenomen' ? 'positive' : uitslag?.result === 'Verworpen' ? 'negative' : 'neutral',
+            dossier: z.kamerstukdossier_id ? dossierById.get(z.kamerstukdossier_id) ?? null : null,
+            persoon: null,
+            reasons: [bewaardReason],
+            derived: false,
+            bookmarked: false,
+            savedKind: 'motie',
+            savedRefId: z.id,
+          });
+        }
+      })(),
+      (async () => {
+        const ids = missingByKind.get('kamerbrief');
+        if (!ids?.length) return;
+        const { data } = await supabase.from('tk_documenten').select('*').in('id', ids).returns<DbDocument[]>();
+        for (const doc of data ?? []) {
+          upsert({
+            key: `brief:${doc.id}`,
+            kind: 'brief',
+            date: doc.datum,
+            title: doc.titel ?? doc.onderwerp ?? 'Kamerbrief',
+            href: `/kamerbrieven/${doc.id}`,
+            dossier: null,
+            persoon: null,
+            reasons: [bewaardReason],
+            derived: false,
+            bookmarked: false,
+            savedKind: 'kamerbrief',
+            savedRefId: doc.id,
+          });
+        }
+      })(),
+      (async () => {
+        const ids = missingByKind.get('activiteit');
+        if (!ids?.length) return;
+        const { data } = await supabase.from('tk_activiteiten').select('*').in('id', ids).returns<DbActiviteit[]>();
+        for (const a of data ?? []) {
+          const isFuture = !!a.aanvangstijd && a.aanvangstijd >= nowIso;
+          upsert({
+            key: `activiteit:${a.id}`,
+            kind: isFuture ? 'agenda' : 'debat',
+            date: a.aanvangstijd,
+            title: a.onderwerp ?? a.soort ?? 'Debat',
+            href: `/agenda/${a.id}`,
+            statusLabel: a.status ?? undefined,
+            dossier: null,
+            persoon: null,
+            reasons: [bewaardReason],
+            derived: true,
+            bookmarked: false,
+            savedKind: 'activiteit',
+            savedRefId: a.id,
+          });
+        }
+      })(),
+      (async () => {
+        const ids = missingByKind.get('vraag');
+        if (!ids?.length) return;
+        const { data } = await supabase.from('tk_zaken').select('*').in('id', ids).returns<DbZaak[]>();
+        for (const z of data ?? []) {
+          upsert({
+            key: `vraag:${z.id}`,
+            kind: 'vraag',
+            date: z.gestart_op,
+            title: z.titel ?? z.onderwerp ?? 'Vraag',
+            href: z.kamerstukdossier_id ? `/dossiers/${z.kamerstukdossier_id}` : null,
+            dossier: null,
+            persoon: null,
+            reasons: [bewaardReason],
+            derived: false,
+            bookmarked: false,
+            savedKind: 'vraag',
+            savedRefId: z.id,
+          });
+        }
+      })(),
+      (async () => {
+        const ids = missingByKind.get('toezegging');
+        if (!ids?.length) return;
+        const { data } = await supabase.from('tk_toezeggingen').select('*').in('id', ids).returns<DbToezegging[]>();
+        for (const t of data ?? []) {
+          const deadline = kompasToezeggingDeadline(t);
+          upsert({
+            key: `toezegging:${t.id}`,
+            kind: 'toezegging',
+            date: t.aanmaakdatum,
+            title: t.tekst ? truncateText(t.tekst, 140) : 'Toezegging',
+            href: null,
+            dossier: null,
+            persoon: null,
+            reasons: [bewaardReason],
+            derived: true,
+            deadlineLabel: deadline.label,
+            deadlineLate: deadline.late,
+            bookmarked: false,
+            savedKind: 'toezegging',
+            savedRefId: t.id,
+          });
+        }
+      })(),
+    ]);
+  }
+
+  const items = Array.from(itemsByKey.values());
+  for (const item of items) {
+    if (item.savedKind && item.savedRefId) {
+      item.bookmarked = bookmarkedKeys.has(`${item.savedKind}:${item.savedRefId}`);
+    }
+  }
+  items.sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime());
+
+  return { items, followedDossiers, followedPersonen };
 }
