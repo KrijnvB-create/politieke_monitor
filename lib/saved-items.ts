@@ -8,7 +8,9 @@ export type SavedItemKind =
   | "vergadering"
   | "activiteit"
   | "kamerbrief"
-  | "debat";
+  | "debat"
+  | "vraag"
+  | "toezegging";
 
 export type SavedItemRecord = {
   id: string;
@@ -29,7 +31,9 @@ const kindLabels: Record<SavedItemKind, string> = {
   vergadering: "Vergadering",
   activiteit: "Activiteit",
   kamerbrief: "Kamerbrief",
-  debat: "Debat"
+  debat: "Debat",
+  vraag: "Vraag",
+  toezegging: "Toezegging"
 };
 
 export function savedKindLabel(kind: SavedItemKind | string) {
