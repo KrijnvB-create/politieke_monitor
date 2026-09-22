@@ -187,10 +187,10 @@ export interface Agendapunt {
 
 export interface Besluit {
     Id: string;
-    Soort?: string;
+    BesluitSoort?: string;
     Status?: string;
     Opmerking?: string;
-    Tekst?: string;
+    BesluitTekst?: string;
     GewijzigdOp?: string;
     Verwijderd?: boolean;
     Stemming?: Stemming[];
@@ -1008,10 +1008,10 @@ function besluitToVoteSummary(zaak: Zaak, besluit: Besluit): VoteSummary {
           };
     });
     const total = voor + tegen + onthouden;
-    const result = besluit.Status ?? besluit.Soort ?? (voor >= tegen ? 'Aangenomen' : 'Verworpen');
+    const result = besluit.Status ?? besluit.BesluitSoort ?? (voor >= tegen ? 'Aangenomen' : 'Verworpen');
     return {
           id: besluit.Id,
-          title: zaak.Titel ?? zaak.Onderwerp ?? besluit.Tekst ?? 'Stemming',
+          title: zaak.Titel ?? zaak.Onderwerp ?? besluit.BesluitTekst ?? 'Stemming',
           date: formatDate(zaak.GestartOp ?? zaak.GewijzigdOp),
           result,
           voor,
@@ -1166,6 +1166,284 @@ export async function getDebateOverview(
           past: past.reverse().map((a) => activiteitToMonitorItem(a)),
           apiOk: data.value.length > 0,
     };
+}
+
+// --- Verwachte debatten uit besluitenlijsten van procedurevergaderingen ------
+//
+// Een Procedurevergadering beslist regelmatig "Agenderen voor het (nog te
+// plannen) commissiedebat X (op <datum>)" zonder dat er meteen een officieel
+// geplande Activiteit met tijdstip voor bestaat. Die besluiten komen uit
+// dezelfde TK Open Data (Besluit.BesluitTekst, geexpand vanuit Agendapunt) en worden
+// hier geparsed tot twee categorieen: een datum bekend maar nog geen tijd, of
+// volledig nog te plannen. Al officieel ingeplande debatten (met tijd) worden
+// eruit gefilterd door te matchen tegen de "echte" toekomstige Activiteiten.
+
+export interface ExpectedDebate {
+    id: string;
+    type: string;
+    onderwerp: string;
+    commissie: string;
+    commissieAfkorting?: string;
+    /** ISO-datum (YYYY-MM-DD) als de datum al bekend is, anders null ("nog te plannen") */
+  datum: string | null;
+    bronOnderwerp: string;
+    bronActiviteitId: string;
+    bronDatum: string;
+}
+
+const DUTCH_MONTHS_TK = [
+    'januari', 'februari', 'maart', 'april', 'mei', 'juni',
+    'juli', 'augustus', 'september', 'oktober', 'november', 'december',
+];
+
+function parseDutchDateFragment(frag: string, ref: Date): string | null {
+    const m = frag.trim().match(/^(\d{1,2})\s+([a-zà-ÿ]+)(?:\s+(\d{4}))?$/i);
+    if (!m) return null;
+    const day = parseInt(m[1], 10);
+    const monthIdx = DUTCH_MONTHS_TK.indexOf(m[2].toLowerCase());
+    if (monthIdx === -1 || day < 1 || day > 31) return null;
+    let year = m[3] ? parseInt(m[3], 10) : ref.getFullYear();
+    let d = new Date(Date.UTC(year, monthIdx, day));
+    // Geen jaartal genoemd en datum ligt >30 dagen in het verleden: bedoeld is volgend jaar.
+  if (!m[3] && d.getTime() < ref.getTime() - 30 * 86400000) {
+        year += 1;
+        d = new Date(Date.UTC(year, monthIdx, day));
+    }
+    return d.toISOString().slice(0, 10);
+}
+
+const DEBATE_TYPE_LABEL: Record<string, string> = {
+    commissiedebat: 'Commissiedebat',
+    wetgevingsoverleg: 'Wetgevingsoverleg',
+    notaoverleg: 'Notaoverleg',
+    rondetafelgesprek: 'Rondetafelgesprek',
+    'plenaire debat': 'Plenair debat',
+    'plenair debat': 'Plenair debat',
+};
+
+// Vindt "Agenderen (bij/voor) (het) (nog te plannen) <type>" als ankerpunt; de rest van de
+// tekst (tot het einde, want een BesluitTekst is altijd één beslissing) wordt apart
+// geparsed omdat de datum zowel VOOR als NA het onderwerp kan staan, bv.:
+//  "... commissiedebat Onderwerp op 11 november 2026."
+//  "... commissiedebat op 11 november 2026 over Onderwerp."
+//  "... commissiedebat Onderwerp d.d. 11 november 2026."
+const AGENDA_ANCHOR_RE =
+    /Agenderen\s+(?:bij|voor)\s+(?:het\s+)?(nog te plannen\s+)?(commissiedebat|wetgevingsoverleg|notaoverleg|rondetafelgesprek|plenaire?\s+debat)\b/gi;
+
+const DATE_FRAG = '[0-3]?\\d\\s+[a-zà-ÿ]+(?:\\s+\\d{4})?';
+const WEEKDAG = '(?:\\w+dag\\s+)?';
+
+const DATE_FIRST_RE = new RegExp(
+    `^(?:dat plaatsvindt\\s+)?(?:op|van)\\s+${WEEKDAG}(${DATE_FRAG}),?\\s+(?:over|ter voorbereiding van)\\s+(?:het\\s+wetsvoorstel\\s+)?(.+)$`,
+    'i'
+);
+const TOPIC_FIRST_RE = new RegExp(
+    `^(?:over\\s+(?:het\\s+wetsvoorstel\\s+)?)?(.+?)(?:\\s+(?:op|van|d\\.d\\.)\\s+${WEEKDAG}(${DATE_FRAG}))?$`,
+    'i'
+);
+
+function extractDebateReferences(
+    tekst: string,
+    ref: Date
+  ): { ongepland: boolean; type: string; onderwerp: string; datum: string | null }[] {
+    const out: { ongepland: boolean; type: string; onderwerp: string; datum: string | null }[] = [];
+    const anchorRe = new RegExp(AGENDA_ANCHOR_RE.source, AGENDA_ANCHOR_RE.flags);
+    let m: RegExpExecArray | null;
+    while ((m = anchorRe.exec(tekst))) {
+          const explicitOngepland = Boolean(m[1]);
+          const typeKey = m[2].toLowerCase().replace(/\s+/g, ' ');
+          const type = DEBATE_TYPE_LABEL[typeKey] ?? m[2];
+
+      // Elke BesluitTekst is een enkele beslissing: alles na het type-woord, min de
+      // afsluitende punt, is de rest van deze beslissing (dus geen [^.]-uitsluiting,
+      // want afkortingen als "d.d." en tijden als "14.00" bevatten zelf ook punten).
+      const rest = tekst.slice(anchorRe.lastIndex).trim().replace(/\.\s*$/, '').trim();
+          if (!rest) continue;
+
+      let onderwerp = '';
+          let dateFrag: string | undefined;
+          const dateFirst = DATE_FIRST_RE.exec(rest);
+          if (dateFirst) {
+                dateFrag = dateFirst[1];
+                onderwerp = dateFirst[2];
+          } else {
+                const topicFirst = TOPIC_FIRST_RE.exec(rest);
+                if (topicFirst) {
+                        onderwerp = topicFirst[1];
+                        dateFrag = topicFirst[2];
+                } else {
+                        onderwerp = rest;
+                }
+          }
+
+      onderwerp = onderwerp
+            .trim()
+            .replace(/^de\s+|^het\s+/i, '')
+            .replace(/\s*\([^)]*\)\s*$/, '')
+            .trim();
+          if (!onderwerp || onderwerp.length > 160) continue;
+
+      const datum = !explicitOngepland && dateFrag ? parseDutchDateFragment(dateFrag, ref) : null;
+          out.push({ ongepland: explicitOngepland || !datum, type, onderwerp, datum });
+    }
+    return out;
+}
+
+function normalizeTopic(s: string): string {
+    return s
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+}
+
+function topicsOverlap(a: string, b: string): boolean {
+    const wordsA = new Set(normalizeTopic(a).split(' ').filter((w) => w.length >= 4));
+    const wordsB = normalizeTopic(b).split(' ').filter((w) => w.length >= 4);
+    return wordsB.some((w) => wordsA.has(w));
+}
+
+async function getProcedurevergaderingenMetBesluiten(sinceDays: number): Promise<Activiteit[]> {
+    const filters = [
+          'Verwijderd eq false',
+          "Soort eq 'Procedurevergadering'",
+          `Aanvangstijd ge ${isoDateDaysAgo(sinceDays)}`,
+          `Aanvangstijd le ${new Date().toISOString()}`,
+    ];
+    const expand = [
+          'Voortouwcommissie',
+          'Agendapunt($expand=Besluit($filter=Verwijderd eq false);$filter=Verwijderd eq false)',
+        ].join(',');
+    const params: Record<string, string> = {
+          '$filter': filters.join(' and '),
+          '$expand': expand,
+          '$orderby': 'Aanvangstijd desc',
+          '$top': String(MAX_ACTIVITEITEN_TOP),
+    };
+    try {
+          const data = await tkFetch<TKListResponse<Activiteit>>(`/Activiteit${qs(params)}`);
+          return data.value;
+    } catch {
+          return [];
+    }
+}
+
+// Eén globale "toekomstige activiteiten"-fetch loopt tegen de $top=250 cap van de TK
+// API aan zodra er verder dan een paar maanden vooruit al meer dan 250 debat-achtige
+// activiteiten gepland staan (Kamerbreed, over alle commissies) -- ver-vooruit-geplande
+// commissiedebatten (soms al een jaar vooruit) vielen daardoor buiten de lijst en werden
+// dan ten onrechte als "nog geen tijd bekend" getoond. Per commissie is de toekomstige
+// lijst klein genoeg (een handvol tot enkele tientallen) om nooit tegen de cap te lopen.
+async function getActiviteitenVoorCommissie(commissieId: string): Promise<Activiteit[]> {
+    const filters = [
+          'Verwijderd eq false',
+          `Voortouwcommissie/Id eq ${commissieId}`,
+          `Aanvangstijd ge ${new Date().toISOString()}`,
+    ];
+    const params: Record<string, string> = {
+          '$filter': filters.join(' and '),
+          '$expand': 'Voortouwcommissie',
+          '$orderby': 'Aanvangstijd asc',
+          '$top': String(MAX_ACTIVITEITEN_TOP),
+    };
+    try {
+          const data = await tkFetch<TKListResponse<Activiteit>>(`/Activiteit${qs(params)}`);
+          return data.value;
+    } catch {
+          return [];
+    }
+}
+
+/**
+ * Debatten die tijdens een procedurevergadering zijn besloten (uit de
+ * besluitenlijst), maar nog niet als officiele Activiteit met tijdstip
+ * bestaan: een deel heeft al een datum ("agenderen op 11 november"), de rest
+ * is nog volledig ongepland ("agenderen voor het nog te plannen CD X").
+ */
+export async function getExpectedDebates(): Promise<{ items: ExpectedDebate[]; apiOk: boolean }> {
+    const pvActiviteiten = await getProcedurevergaderingenMetBesluiten(45);
+
+  const now = new Date();
+    const todayKey = now.toISOString().slice(0, 10);
+
+  // Verzamel eerst alle kandidaten per commissie, zodat we per commissie maar één
+  // gerichte "toekomstige activiteiten"-fetch nodig hebben (zie getActiviteitenVoorCommissie).
+  type Candidate = {
+        pv: Activiteit;
+        ap: Agendapunt;
+        ref: { ongepland: boolean; type: string; onderwerp: string; datum: string | null };
+  };
+    const candidatesByCommissie = new Map<string, Candidate[]>();
+
+  for (const pv of pvActiviteiten) {
+        const commissieId = pv.Voortouwcommissie?.Id;
+        const commissie = pv.Voortouwcommissie?.NaamNL ?? pv.Voortouwcommissie?.Afkorting;
+        if (!commissieId || !commissie) continue;
+        for (const ap of pv.Agendapunt ?? []) {
+              if (ap.Verwijderd) continue;
+              for (const besluit of ap.Besluit ?? []) {
+                      if (besluit.Verwijderd || !besluit.BesluitTekst) continue;
+                      for (const ref of extractDebateReferences(besluit.BesluitTekst, now)) {
+                                if (ref.datum && ref.datum < todayKey) continue;
+                                const list = candidatesByCommissie.get(commissieId) ?? [];
+                                list.push({ pv, ap, ref });
+                                candidatesByCommissie.set(commissieId, list);
+                      }
+              }
+        }
+  }
+
+  const commissieIds = Array.from(candidatesByCommissie.keys());
+    const futureByCommissie = new Map<string, Activiteit[]>(
+          await Promise.all(
+                  commissieIds.map(
+                          async (id): Promise<[string, Activiteit[]]> => [id, await getActiviteitenVoorCommissie(id)]
+                        )
+                )
+        );
+
+  const found = new Map<string, ExpectedDebate>();
+
+  for (const [commissieId, candidates] of candidatesByCommissie) {
+        const futureReal = futureByCommissie.get(commissieId) ?? [];
+        for (const { pv, ap, ref } of candidates) {
+              const commissie = pv.Voortouwcommissie?.NaamNL ?? pv.Voortouwcommissie?.Afkorting!;
+              const bronDatum = pv.Aanvangstijd ?? '';
+
+        const alreadyScheduled = futureReal.some((a) => {
+                    if (!topicsOverlap(a.Onderwerp ?? '', ref.onderwerp)) return false;
+                    if (ref.datum) return (a.Aanvangstijd ?? '').slice(0, 10) === ref.datum;
+                    return true;
+              });
+              if (alreadyScheduled) continue;
+
+        const key = `${commissieId}|${normalizeTopic(ref.onderwerp)}|${ref.type}`;
+              const existing = found.get(key);
+              if (existing && existing.bronDatum >= bronDatum) continue;
+              found.set(key, {
+                        id: `${ap.Id}-${key}`,
+                        type: ref.type,
+                        onderwerp: ref.onderwerp,
+                        commissie,
+                        commissieAfkorting: pv.Voortouwcommissie?.Afkorting,
+                        datum: ref.datum,
+                        bronOnderwerp: ap.Onderwerp ?? '',
+                        bronActiviteitId: pv.Id,
+                        bronDatum,
+              });
+        }
+  }
+
+  const items = Array.from(found.values()).sort((a, b) => {
+        if (a.datum && b.datum) return a.datum.localeCompare(b.datum);
+        if (a.datum) return -1;
+        if (b.datum) return 1;
+        return a.onderwerp.localeCompare(b.onderwerp);
+  });
+
+  return { items, apiOk: true };
 }
 
 // --- Fracties (monitor-view) -------------------------------------------------
