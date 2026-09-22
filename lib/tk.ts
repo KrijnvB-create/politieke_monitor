@@ -599,6 +599,31 @@ export async function getActiviteiten(opts?: {
     }
 }
 
+// De TK API geeft geen `@odata.nextLink` terug, ook niet als er meer resultaten zijn dan
+// $top=250 (het maximum per pagina). Zonder handmatige paginering via $skip werd bij een
+// aflopende of oplopende query zonder datumgrens stilzwijgend afgekapt op de eerste 250
+// resultaten -- voor "Alles vooruit" op de agenda betekende dat concreet dat alles voorbij
+// ongeveer 2 weken vooruit nooit werd opgehaald, ook niet als het al officieel gepland was
+// (bv. een commissiedebat 5 weken vooruit). Loopt door tot een pagina leeg is/kleiner dan
+// $top, met een veiligheidslimiet zodat een kapotte cursor niet oneindig doorloopt.
+async function getActiviteitenAll(opts: {
+    soort?: string;
+    vanaf?: string;
+    tot?: string;
+    search?: string;
+    orderby?: 'asc' | 'desc';
+}): Promise<Activiteit[]> {
+    const pageSize = MAX_ACTIVITEITEN_TOP;
+    const maxPages = 12; // ruim voldoende voor de ~650-1000 toekomstige activiteiten die de Kamer op enig moment gepland heeft
+  const all: Activiteit[] = [];
+    for (let page = 0; page < maxPages; page++) {
+          const data = await getActiviteiten({ ...opts, top: pageSize, skip: page * pageSize });
+          all.push(...data.value);
+          if (data.value.length < pageSize) break;
+    }
+    return all;
+}
+
 // --- Commissie helpers -------------------------------------------------------
 
 export async function getCommissies(): Promise<TKListResponse<Commissie>> {
@@ -1109,17 +1134,18 @@ export async function getAgendaOverview(
     // Chronologisch (oplopend) vanaf een week terug opvragen, in plaats van aflopend zonder
     // datumgrens: aflopend + geen ondergrens levert de allerverste toekomstige activiteiten op
     // (soms al gepland tot een jaar vooruit), waardoor de eerstkomende weken werden overgeslagen.
-    const data = await getActiviteiten({
-                      top: MAX_ACTIVITEITEN_TOP,
+    // Gepagineerd (zie getActiviteitenAll), anders wordt bij >250 activiteiten alles voorbij
+    // een paar weken vooruit stilzwijgend afgekapt en toont "Alles vooruit" niet alles.
+    const value = await getActiviteitenAll({
                       search: query,
                       vanaf: isoDateDaysAgo(7),
                       orderby: 'asc',
         });
-    const { planned, past } = splitPlannedPast(data.value);
+    const { planned, past } = splitPlannedPast(value);
     return {
           planned: planned.map((a) => activiteitToMonitorItem(a)),
           past: past.reverse().map((a) => activiteitToMonitorItem(a)),
-          apiOk: data.value.length > 0,
+          apiOk: value.length > 0,
     };
 }
 
@@ -1153,18 +1179,18 @@ export async function getDebateOverview(
   ): Promise<{ planned: MonitorItem[]; past: MonitorItem[]; apiOk: boolean }> {
     // Zelfde reden als getAgendaOverview: chronologisch vanaf een week terug, anders krijg je
     // alleen de verst-vooruit-geplande activiteiten en missen de debatten van de komende weken.
-        const data = await getActiviteiten({
-                      top: MAX_ACTIVITEITEN_TOP,
+    // Gepagineerd (zie getActiviteitenAll) om dezelfde 250-cap-afkapping te vermijden.
+    const value = await getActiviteitenAll({
                       search: query,
                       vanaf: isoDateDaysAgo(7),
                       orderby: 'asc',
         });
-    const debates = data.value.filter((a) => (a.Soort ?? '').toLowerCase().includes('debat'));
+    const debates = value.filter((a) => (a.Soort ?? '').toLowerCase().includes('debat'));
     const { planned, past } = splitPlannedPast(debates);
     return {
           planned: planned.map((a) => activiteitToMonitorItem(a)),
           past: past.reverse().map((a) => activiteitToMonitorItem(a)),
-          apiOk: data.value.length > 0,
+          apiOk: value.length > 0,
     };
 }
 
